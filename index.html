@@ -1,0 +1,1734 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Лава-лампа</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0720">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" href="data:,">
+<style>
+/* Шрифт — свой файл (PROTO-BASE §1): Nunito, округлый, с кириллицей (vendor/, лицензия OFL). */
+@font-face { font-family: 'Nunito'; font-weight: 200 1000; font-display: swap; src: url('vendor/nunito-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Nunito'; font-weight: 200 1000; font-display: swap; src: url('vendor/nunito-cyr.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+/* Палитра — одно место; canvas читает цвета через getComputedStyle (PROTO-BASE §9). Значения — из ART-PLAN.md. */
+:root{
+  --page:#0a0714;                 /* фон вокруг кадра-«телефона» */
+  --bg1:#3a2188; --bg2:#0b0720;   /* фон: фиолетовое пятно света за лампами и тёмные края */
+  --ink:#fff4e6; --muted:#b9a8d6; --card:#2a1c44; --line:#4a3670;
+  --wax-a:#ff4f9a; --wax-b:#2fe0d0; --wax-c:#ffb020; --wax-d:#a6f04a; --wax-e:#a879ff;   /* воск: розовый, бирюзовый, янтарный, лаймовый, фиалковый */
+  --wax-frozen:#cfc8e6;           /* застывший воск */
+  --liquid:#4a3ad8; --liquid-top:#150f4a;   /* жидкость в колбе: светится синим у лампочки, темнеет к горлышку */
+  --glass-rim:rgba(255,255,255,.35);
+  --metal-1:#ffe2a3; --metal-2:#c98f3a; --metal-3:#5c3a15;   /* латунь крышки и подставки: блик, тело, тень */
+  --wood-1:#2b1c5a; --wood-2:#0d0822;                        /* столешница: тёмная, гладкая */
+  --heat-on:#ffc24a; --heat-off:#33223f;                     /* шкала тепла */
+  --good:#63d471; --good-d:#2f8f3e; --bad:#ff5d5d; --bad-d:#b23030; --accent:#ffb020; --accent-d:#b8720a;
+  --frame-w:430px;
+}
+@media (prefers-color-scheme: light){ :root{ --page:#d9d2e6; } }   /* сцена — тёмная комната в любой теме; светлеет только фон вокруг кадра */
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--page);color:var(--ink);font:700 16px/1.3 'Nunito', system-ui, sans-serif;
+  overflow:hidden;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+#frame{position:relative;width:min(100vw,var(--frame-w));height:100dvh;height:100svh;margin:0 auto;background:var(--bg2);
+  display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{position:absolute;left:0;right:0;top:env(safe-area-inset-top);z-index:2;display:flex;justify-content:space-between;align-items:center;padding:10px 12px;pointer-events:none}
+header b{font-size:18px;font-weight:900;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+.chips{display:flex;gap:8px}
+.chip{display:flex;align-items:center;gap:5px;background:rgba(20,12,36,.72);border:1.5px solid var(--line);border-radius:999px;padding:4px 11px 4px 7px;font-weight:900;font-size:17px;min-width:58px}
+.chip svg{width:20px;height:20px;display:block}
+.chip.low{border-color:var(--bad);color:#ffd0c8}
+.chip.bump{animation:bump .26s ease-out}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.24)}100%{transform:scale(1)}}
+header button{pointer-events:auto}
+#btn-mute{width:40px;height:40px;padding:0;border-radius:12px;background:rgba(20,12,36,.72);border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer}
+#btn-mute svg{width:22px;height:22px} #btn-mute .off{display:none} #btn-mute.muted .on{display:none} #btn-mute.muted .off{display:block}
+#game{flex:1;position:relative;touch-action:none}
+#game canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+footer{position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);z-index:2;display:flex;gap:10px;justify-content:space-between;padding:0 12px 10px;pointer-events:none}
+footer button{pointer-events:auto}
+/* Кнопки объёмные: тень снизу, проседают при нажатии. */
+button{font:900 16px/1 'Nunito', system-ui, sans-serif;cursor:pointer}
+.btn{color:#2a1638;background:linear-gradient(#ffd36a,var(--accent));border:0;border-radius:14px;padding:13px 20px 14px;
+  box-shadow:0 5px 0 var(--accent-d), 0 9px 16px rgba(0,0,0,.4);transform:translateY(0);transition:transform .05s}
+.btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--accent-d), 0 3px 6px rgba(0,0,0,.4)}
+.btn.good{background:linear-gradient(#8cec97,var(--good));box-shadow:0 5px 0 var(--good-d), 0 9px 16px rgba(0,0,0,.4);color:#0f3015}
+.btn.good:active{box-shadow:0 1px 0 var(--good-d), 0 3px 6px rgba(0,0,0,.4)}
+.btn.ghost{background:linear-gradient(#59448a,#463470);box-shadow:0 5px 0 #2b1f4a, 0 9px 16px rgba(0,0,0,.4);color:var(--ink)}
+.btn.ghost:active{box-shadow:0 1px 0 #2b1f4a, 0 3px 6px rgba(0,0,0,.4)}
+.btn.small{padding:10px 14px 11px;font-size:14px;border-radius:12px}
+#overlay{position:absolute;inset:0;z-index:5;display:none;align-items:center;justify-content:center;background:rgba(8,4,18,.62);padding:20px}
+#overlay.show{display:flex}
+.card{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:22px 20px 20px;max-width:350px;width:100%;text-align:center;
+  box-shadow:0 14px 40px rgba(0,0,0,.5);animation:pop .18s ease-out} /* стартует с видимого состояния, не с opacity:0 (§9) */
+@keyframes pop{from{transform:scale(.96)}to{transform:scale(1)}}
+.card h2{margin:0 0 8px;font-size:26px;font-weight:900} .card p{color:var(--muted);margin:0 0 16px;font-weight:700}
+.card .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.levels{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:18px 0 10px}
+.levels button{padding:10px 0 11px;font-size:15px;border-radius:11px;border:0;background:#463470;color:var(--ink);box-shadow:0 3px 0 #2b1f4a}
+.levels button.cur{background:var(--accent);color:#2a1638;box-shadow:0 3px 0 var(--accent-d)}
+.levels button.locked{opacity:.45}
+.levels button.wide{grid-column:span 5}
+.lock{display:inline-block;width:11px;height:9px;background:currentColor;border-radius:2px;position:relative;top:1px}
+.lock::before{content:'';position:absolute;left:1.5px;top:-6px;width:8px;height:8px;border:2px solid currentColor;border-bottom:0;border-radius:5px 5px 0 0;box-sizing:border-box}
+.cheat{margin-top:8px;font-size:12px;font-weight:700;padding:7px 10px;background:transparent;border:1.5px dashed var(--muted);color:var(--muted);border-radius:10px}
+.help-list{text-align:left;color:var(--ink);margin:0 0 16px;padding:0;list-style:none;font-size:15px}
+.help-list li{display:flex;gap:10px;align-items:center;margin:9px 0}
+.help-list i{flex:0 0 26px;height:26px;border-radius:50%;display:block}
+#toast{position:absolute;left:50%;bottom:84px;z-index:4;transform:translateX(-50%);background:rgba(20,12,36,.9);border:1.5px solid var(--line);padding:8px 14px;border-radius:12px;
+  pointer-events:none;opacity:.98;transition:opacity .25s;white-space:nowrap}
+#toast.hide{opacity:0}
+@media (prefers-reduced-motion: reduce){ .card{animation:none} .chip.bump{animation:none} #toast{transition:none} .btn{transition:none} }
+</style>
+</head>
+<body>
+<div id="frame">
+  <header>
+    <b id="hud-level">Уровень 1</b>
+    <div class="chips">
+      <!-- цель без текста: сколько капель осталось в лампах -->
+      <div class="chip" id="chip-left"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="11" rx="7" ry="6.2" fill="#ff4f9a"/><ellipse cx="7.6" cy="8.6" rx="2.2" ry="1.3" fill="#fff" opacity=".7"/></svg><span id="hud-left">0</span></div>
+      <!-- тепло: сколько тапов осталось -->
+      <div class="chip" id="chip-heat"><svg viewBox="0 0 20 20"><path d="M10 1.5c.6 3.4 5 5.2 5 10a5 5 0 0 1-10 0c0-2.2 1.2-3.3 2-4.6.4 1.3 1 2 1.8 2.2C8.400 6.5 9 3.800 10 1.5z" fill="#ffb020"/><path d="M10 9.500c.4 1.700 2.200 2.400 2.200 4.300a2.200 2.200 0 0 1-4.400 0c0-1.900 1.800-2.600 2.200-4.300z" fill="#fff3c4"/></svg><span id="hud-heat">0</span></div>
+    </div>
+    <button id="btn-mute" aria-label="звук">
+      <svg class="on" viewBox="0 0 22 22"><path d="M3 8.500h3.500L11 4.500v13l-4.500-4H3z" fill="#fff4e6"/><path d="M14 7.500c1.600 1.900 1.600 5.100 0 7M16.500 5c3 3.300 3 8.700 0 12" fill="none" stroke="#fff4e6" stroke-width="1.800" stroke-linecap="round"/></svg>
+      <svg class="off" viewBox="0 0 22 22"><path d="M3 8.500h3.500L11 4.500v13l-4.500-4H3z" fill="#b9a8d6"/><path d="M14.500 8.500l5 5M19.500 8.500l-5 5" fill="none" stroke="#ff5d5d" stroke-width="1.800" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+  <div id="game"><canvas id="cv"></canvas></div>
+  <footer>
+    <button id="btn-menu" class="btn ghost small">Меню</button>
+    <button id="btn-reset" class="btn ghost small">Заново</button>
+  </footer>
+  <div id="overlay"><div class="card" id="card"></div></div>
+  <div id="toast" class="hide"></div>
+</div>
+<script>
+'use strict';
+/* ЯДРО */
+// ---------------------------------------------------------------------------
+// «Лава-лампа». Лампа — столбик капель воска (строка жетонов снизу вверх).
+// Ход: тап по капле — она всплывает на самый верх своей лампы (тяжёлая — тонет на дно).
+// Три и больше одного цвета подряд лопаются («бульк»), столбик оседает, серии могут сойтись снова — цепочка.
+// Тепло = число тапов на уровень. Победа — все лампы пусты. Проигрыш — тепло кончилось или воск уже не собрать.
+// Этот блок исполняют и игра, и sim.mjs / test.mjs (core-load.mjs вырезает его по маркерам).
+// ---------------------------------------------------------------------------
+const CFG = {
+  // --- правила ---
+  POP_MIN: 3,             // столько капель одного цвета подряд лопается
+  CAP: 10,                // вместимость лампы в каплях (9 цветных и место под застывший воск)
+  SOLVE_NODES: 40000,     // предел узлов поиска на одну лампу; сверх него ответ «неизвестно», а не «тупик»
+  // --- генератор уровней после ручных (11+) ---
+  GEN_TRIES: 18,          // столько раскладок пробуем ради «красивой» (нужный par и цепочка в решении)
+  GEN_TRIES_MAX: 240,     // дальше берём любую решаемую
+  GEN_SEED: 7000,         // сдвиг сида генератора; сид уровня = GEN_SEED + n * GEN_SEED_STEP
+  GEN_SEED_STEP: 7919,
+  GEN_TIERS: 5,           // длина «пилы» сложности: лёгкий … сложный, затем снова лёгкий
+  GEN_3LAMPS_FROM: 25,    // с какого уровня на сложном зубце бывает три лампы
+  // --- обучение и подсказка ---
+  HINT_IDLE_MS: 8000,     // столько бездействия — и рука показывает ход из решения
+  HAND_DELAY_MS: 320,     // пауза после конца анимации до появления руки
+  HAND_CYCLE_MS: 1150,    // один «тык» руки
+  // --- анимация хода (мс; делятся на timeScale) ---
+  RISE_MS: 250,           // подъём капли: база
+  RISE_PER_SLOT_MS: 56,   // подъём: добавка за каждый пройденный слот
+  RISE_SLIM: 0.68,        // во сколько раз худеет капля в пути
+  RISE_STRETCH: 0.46,     // на сколько вытягивается по высоте в пути
+  RISE_SIDE: 1.45,        // на сколько своих полуширин уходит к стенке, обтекая столбик
+  PUSH_SIDE: 0.34,        // на сколько полуширин столбик уступает ей дорогу
+  GAP_CLOSE_AT: 0.3,      // доля подъёма, после которой столбик начинает оседать в освободившийся слот
+  SETTLE_MS: 230,         // оседание капли в слот
+  SETTLE_STAGGER_MS: 26,  // задержка оседания между соседними каплями
+  POP_DELAY_MS: 90,       // пауза между концом подъёма и первым «бульк»
+  POP_SQUEEZE_MS: 210,    // серия стягивается к центру и раскаляется перед «бульк»
+  RUN_STAGGER_MS: 150,    // пауза между сериями, которые лопаются одной волной
+  SETTLE_DELAY_MS: 50,    // пауза между «бульк» и оседанием
+  CHAIN_PAUSE_MS: 200,    // пауза между звеньями цепочки (ART-PLAN: 150–250 мс)
+  INTRO_MS: 420,          // капли «вздуваются» на старте уровня
+  INTRO_STAGGER_MS: 34,
+  WIN_MS: 1900,           // праздник «чистый свет», затем следующий уровень
+  WIN_SKIP_MS: 500,       // раньше этого тап праздник не пропускает
+  LOSE_MS: 950,           // лампа гаснет, затем карточка
+  NOPE_MS: 260,           // капля качает «нет»
+  TOAST_MS: 1500,         // сколько висит тост
+  // --- эффекты ---
+  RING_MS: 420,           // кольцо «бульк»
+  BUBBLE_MS: 900,         // жизнь пузырька
+  BUBBLES_PER_RUN: 8,     // пузырьков на серию (ART-PLAN: 6–10)
+  FLASH_MS: 320,          // вспышка свечения колбы
+  LABEL_MS: 720,          // подпись «×2» у звена цепочки
+  // --- геометрия (виртуальные юниты при ширине кадра 400; масштабируются под высоту) ---
+  LAMP_W: [186, 152, 112],   // ширина колбы при 1, 2, 3 лампах
+  LAMP_H: [566, 540, 500],   // высота колбы
+  LAMP_X: [[200], [103, 297], [69, 200, 331]],   // центры ламп
+  TOP_PAD: 56,            // место под HUD над крышкой
+  CAP_H: 26,              // крышка
+  BASE_H: 74,             // подставка
+  BASE_CUP: 14,           // на сколько колба утоплена в подставку
+  SHELF_H: 62,            // полка (под ней — кнопки футера)
+  LAYOUT_MAX_K: 1.08,     // лампа не растёт больше этого на высоких экранах
+  GLASS_BOT: 0.40,        // полуширина колбы у дна, в долях ширины
+  GLASS_TOP: 0.25,        // полуширина у горлышка
+  GLASS_WIDE_U: 0.26,     // на какой высоте колба шире всего (0 — дно, 1 — верх)
+  PAD_BOT: 16,            // отступ столбика от дна колбы
+  PAD_TOP: 22,            // отступ от горлышка
+  BLOB_RX: 0.205,         // полуширина капли в долях ширины колбы: капля 49–76 px, воск занимает лампу, а не висит бусинами
+  BLOB_RY: 0.96,          // полувысота капли в долях полуслота: < 1 — между разными цветами остаётся щель
+  WALL_GAP: 5,            // зазор между каплей и стеклом
+  HIT_Y: 0.62,            // тап засчитывается капле, если он не дальше этой доли слота по высоте
+  HIT_X_PAD: 10,          // и не дальше стекла + столько по ширине
+  TAP_SLOP: 24,           // палец уехал дальше (экранные px) — это свайп, ход не засчитан; дрожь меньше порога ход не отменяет
+  // --- ощущение: отклик на касание, «желе», «бульк» ---
+  PRESS_MS: 70,           // за столько капля сминается под пальцем
+  PRESS_SQUASH: 0.14,     // на сколько сминается
+  JELLY_FREQ: 27,         // частота «желе», рад/с
+  JELLY_DAMP: 7,          // затухание «желе», 1/с
+  JELLY_DELAY_MS: 34,     // задержка волны по столбику на каждый слот расстояния
+  JELLY_LIFE_MS: 900,     // сколько живёт один толчок
+  RISE_WINDUP: 0.14,      // доля подъёма на «присед» перед стартом
+  TRAIL_MS: 40,           // раз во столько всплывающая капля роняет пузырёк
+  POP_GATHER: 0.42,       // на какую долю пути капли серии стягиваются к её центру перед «бульк»
+  POP_SWELL: 0.2,         // на сколько серия набухает перед «бульк»
+  LUMP: 0.3,              // доля «наплывов» в форме капли: 0 — ровный овал, больше — живее и неровнее
+  TAIL_N: 9,              // шариков в хвосте-нити за всплывающей каплей
+  TAIL_GAP: 0.042,        // отставание шариков хвоста, в долях пути
+  TAIL_HOLD: 0.3,         // до этой доли пути нить цела, дальше рвётся и втягивается
+  DROPS_PER_BLOB: 5,      // брызг воска с каждой лопнувшей капли
+  DROP_MS: 540,           // жизнь брызги
+  SHAKE_PX: 2.6,          // тряска сцены: множитель; сила растёт с номером звена цепочки
+  SHAKE_MAX_PX: 9,        // потолок тряски
+  SHAKE_MS: 260,          // длительность тряски
+  HITSTOP_MS: 30,         // стоп-кадр на «бульк»
+  HITSTOP_CHAIN_MS: 58,   // стоп-кадр на звене цепочки
+  GLINT_MS: 430,          // блик пробегает по стеклу
+  OUT_MS: 220,            // лампа гаснет между уровнями
+  // --- свет ---
+  HALO_A: 0.26,           // свечение капли наружу, на стену (ореол рисуется за лампой)
+  HALO_K: 5.4,            // размер этого ореола в полуширинах капли
+  LIGHT_SLOPE: 10,        // крутизна «купола» капли для расчёта нормали
+  SPEC_POW: 22,           // жёсткость мягкого блика
+  SPEC_A: 0.42,           // сила мягкого блика
+  AMB_BUBBLES: 9,         // пузырьков в жидкости одной лампы
+  // --- метаболлы ---
+  FIELD_CELL: 1.5,        // клетка поля плотности, виртуальные юниты (⅓ разрешения экрана при DPR 2)
+  FIELD_CELL_MAX: 4,      // до какой клетки грубеет поле на слабом телефоне (запасной путь из ART-PLAN)
+  SLOW_FRAME_MS: 11,      // среднее время кадра выше этого — поле грубеет на шаг
+  SLOW_FRAMES: 40,        // столько кадров подряд усредняем, прежде чем решать
+  FIELD_R: 1.6,           // радиус влияния капли в её радиусах: чем меньше, тем уже перемычка между слипшимися одноцветными
+  FIELD_T: 0.3713,        // порог: поле одинокой капли на её границе, (1 − 1/R²)²
+  FIELD_EDGE: 0.05,       // мягкость края
+  GLOW_K: 3.4,            // размер ореола в полуширинах капли
+  GLOW_A: 0.34,           // сила ореола внутри колбы
+  WOBBLE: 0.03,           // «дыхание» капли в покое
+};
+const COLOR_KEYS = 'abcde';            // a розовый · b бирюзовый · c янтарный · d лаймовый · e фиалковый
+
+// Детерминированный генератор случайных чисел (PROTO-BASE §5). Math.random() не используется.
+function mulberry32(seed){
+  let a = seed >>> 0;
+  return function(){
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Жетоны: 'a'..'e' — капля цвета; 'A'..'E' — тяжёлая капля того же цвета; '#' — застывший воск (не тапается).
+function tokColor(t){ return t === '#' ? '#' : t.toLowerCase(); }
+function isFrozen(t){ return t === '#'; }
+function isHeavy(t){ return t !== '#' && t !== t.toLowerCase(); }
+
+// Контент — декларативная таблица. Лампа — строка снизу вверх. slack — запас тепла сверх решения солвера.
+// hand: 'all' — рука ведёт каждый ход и принимает только его; 'first' — рука показывает первый ход, дальше игрок сам.
+// handAt: [лампа, индекс] — какой именно первый ход показать, если кратчайших решений несколько.
+const LEVELS = [
+  { n: 1,  lamps: ['abaaccbbc'], slack: 3, hand: 'all' },                                   // выдерни разделитель: розовые «бульк», потом цепочка
+  { n: 2,  lamps: ['cbbaabacc'], slack: 3, hand: 'first' },                                 // нижняя всплывает к своим наверх
+  { n: 3,  lamps: ['bcdbcdcbd'], slack: 4 },
+  { n: 4,  lamps: ['edaedaeda'], slack: 4 },                                                // «зебра»: три подготовки и цепочка из трёх
+  { n: 5,  lamps: ['bebebe', 'accdaacdd'], slack: 4 },                                      // две лампы, тепло общее
+  { n: 6,  lamps: ['aacAbccbb'], slack: 3, hand: 'first', handAt: [0, 3] },                 // тяжёлая капля тонет к своим на дно
+  { n: 7,  lamps: ['edEDed', 'abAcbabcc'], slack: 3 },
+  { n: 8,  lamps: ['debedde#bb'], slack: 3, hand: 'first', handAt: [0, 2] },                // застывший воск лопается от соседнего «бульк»
+  { n: 9,  lamps: ['bab#bcCacA', 'de#DedE'], slack: 3 },
+  { n: 10, lamps: ['cbacbacba', 'dEAdaedea', 'cce#ece'], slack: 3 },                        // финал: три лампы
+];
+
+// --- одна лампа: ход, волна «бульк», полный расчёт ---
+const RUN_RE = /([a-e])\1\1/i;          // три одного цвета подряд, тяжёлые считаются своим цветом
+function lampMove(str, i){             // строка после хода или null, если ход невозможен
+  const t = str[i];
+  if (t === undefined || t === '#') return null;
+  const rest = str.slice(0, i) + str.slice(i + 1);
+  if (isHeavy(t)) return i === 0 ? null : t + rest;            // тяжёлая тонет на дно; на дне ей некуда
+  return i === str.length - 1 ? null : rest + t;                // обычная всплывает; верхней некуда
+}
+// Одна волна: лопаются все серии ≥ POP_MIN и застывший воск вплотную к ним. null — лопать нечего.
+function lampWave(str){
+  if (!RUN_RE.test(str)) return null;
+  const n = str.length, kill = new Array(n).fill(false), runs = [];
+  let i = 0;
+  while (i < n){
+    const c = tokColor(str[i]); let j = i + 1;
+    if (c !== '#'){
+      while (j < n && tokColor(str[j]) === c) j++;
+      if (j - i >= CFG.POP_MIN){ runs.push({ from: i, to: j - 1, color: c }); for (let k = i; k < j; k++) kill[k] = true; }
+    }
+    i = j;
+  }
+  const frozen = [];
+  for (const r of runs){
+    if (r.from > 0 && str[r.from - 1] === '#' && !kill[r.from - 1]){ kill[r.from - 1] = true; frozen.push(r.from - 1); }
+    if (r.to < n - 1 && str[r.to + 1] === '#' && !kill[r.to + 1]){ kill[r.to + 1] = true; frozen.push(r.to + 1); }
+  }
+  let out = '';
+  for (i = 0; i < n; i++) if (!kill[i]) out += str[i];
+  return { str: out, runs, frozen, kill };
+}
+function lampResolve(str){             // все волны подряд, пока есть что лопать
+  const waves = []; let w;
+  while ((w = lampWave(str))){ waves.push(w); str = w.str; }
+  return { str, waves };
+}
+function lampTap(str, i){              // ход + цепочка: { moved, str, waves } или null
+  const m = lampMove(str, i);
+  if (m === null) return null;
+  const r = lampResolve(m);
+  return { moved: m, str: r.str, waves: r.waves };
+}
+// Быстрый признак тупика: цвета меньше трёх капель уже не собрать; застывший воск без цветных не лопнет никогда.
+function lampHopeless(str){
+  const cnt = {}; let colored = 0, frozen = 0;
+  for (const t of str){ if (t === '#') frozen++; else { colored++; const c = tokColor(t); cnt[c] = (cnt[c] || 0) + 1; } }
+  if (frozen && !colored) return true;
+  for (const c in cnt) if (cnt[c] < CFG.POP_MIN) return true;
+  return false;
+}
+// Кратчайшее решение лампы поиском в ширину: массив индексов тапов; null — тупик доказан; undefined — упёрлись в предел узлов.
+const SOLVE_CACHE = new Map();
+function solveLamp(str){
+  if (str === '') return [];
+  if (SOLVE_CACHE.has(str)) return SOLVE_CACHE.get(str);
+  let res = null;
+  if (!lampHopeless(str)){
+    const prev = new Map([[str, null]]);
+    let q = [str], nodes = 0, done = false;
+    while (q.length && !done && nodes < CFG.SOLVE_NODES){
+      const nq = [];
+      for (let a = 0; a < q.length && !done; a++){
+        const cur = q[a];
+        for (let i = 0; i < cur.length; i++){
+          const m = lampMove(cur, i);
+          if (m === null) continue;
+          const out = RUN_RE.test(m) ? lampResolve(m).str : m;
+          if (prev.has(out)) continue;
+          nodes++; prev.set(out, { from: cur, move: i });
+          if (out === ''){ done = true; break; }
+          if (!lampHopeless(out)) nq.push(out);
+        }
+      }
+      q = nq;
+    }
+    if (done){
+      res = []; let at = '';
+      while (prev.get(at)){ res.push(prev.get(at).move); at = prev.get(at).from; }
+      res.reverse();
+    } else if (nodes >= CFG.SOLVE_NODES) res = undefined;
+  }
+  SOLVE_CACHE.set(str, res);
+  return res;
+}
+// Что происходит по ходу решения: сколько серий лопнуло, сколько тапов дали две серии и больше, на каком тапе первый «бульк».
+function pathInfo(str, path){
+  let pops = 0, chainTaps = 0, firstPop = 0, maxPops = 0;
+  path.forEach((i, k) => {
+    const t = lampTap(str, i); let p = 0;
+    for (const w of t.waves) p += w.runs.length;
+    pops += p; if (p >= 2) chainTaps++; if (p && !firstPop) firstPop = k + 1; if (p > maxPops) maxPops = p;
+    str = t.str;
+  });
+  return { pops, chainTaps, firstPop, maxPops };
+}
+
+// --- генератор уровней после ручных: детерминирован от номера уровня ---
+function shuffleInPlace(arr, rnd){
+  for (let i = arr.length - 1; i > 0; i--){ const j = Math.floor(rnd() * (i + 1)); const t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
+  return arr;
+}
+// spec: { colors: ['a','c'], heavy: сколько капель тяжёлые, frozen: сколько застывших, par: желаемая длина решения }
+function genLamp(rnd, spec){
+  let best = null;
+  for (let k = 0; k < CFG.GEN_TRIES_MAX; k++){
+    if (best && k >= CFG.GEN_TRIES) break;
+    const toks = [];
+    for (const c of spec.colors) for (let j = 0; j < CFG.POP_MIN; j++) toks.push(c);
+    for (let h = 0; h < spec.heavy; h++){ const i = Math.floor(rnd() * toks.length); toks[i] = toks[i].toUpperCase(); }
+    for (let f = 0; f < spec.frozen; f++) toks.push('#');
+    const str = shuffleInPlace(toks, rnd).join('');
+    if (lampWave(str)) continue;                        // лопается до первого хода
+    const sol = solveLamp(str);
+    if (!sol || sol.length < 2) continue;               // нерешаемо или решается одним тапом
+    const info = pathInfo(str, sol);
+    const score = (info.chainTaps ? 6 : 0) - Math.abs(sol.length - spec.par) * 2;
+    if (!best || score > best.score) best = { str, score };
+    if (score >= 6) break;
+  }
+  return best ? best.str : spec.colors.map(c => c + c).join('') + spec.colors.join('');   // запасная раскладка: пары, затем по одной сверху
+}
+const GEN_CACHE = new Map();
+function genLevel(n){
+  if (GEN_CACHE.has(n)) return GEN_CACHE.get(n);
+  const rnd = mulberry32(CFG.GEN_SEED + n * CFG.GEN_SEED_STEP);
+  const tier = (n - 1) % CFG.GEN_TIERS;               // 0 — лёгкий … 4 — сложный
+  const lampsN = tier === 0 ? 1 : (tier === CFG.GEN_TIERS - 1 && n >= CFG.GEN_3LAMPS_FROM ? 3 : 2);
+  const lamps = [];
+  for (let k = 0; k < lampsN; k++){
+    const nc = tier <= 1 && rnd() < 0.5 ? 2 : 3;
+    const pool = shuffleInPlace(COLOR_KEYS.split(''), rnd);
+    const heavy = tier >= 1 && rnd() < 0.55 ? (rnd() < 0.35 ? 2 : 1) : 0;
+    const frozen = tier >= 2 && rnd() < 0.5 ? 1 : 0;
+    lamps.push(genLamp(rnd, { colors: pool.slice(0, nc), heavy, frozen, par: 2 + Math.min(3, tier) }));
+  }
+  const def = { n, lamps, slack: tier >= 3 ? 1 : 2, gen: true };
+  GEN_CACHE.set(n, def);
+  return def;
+}
+function levelDef(li){ return li < LEVELS.length ? LEVELS[li] : genLevel(li + 1); }
+
+// --- состояние уровня ---
+function lampStr(lamp){ let s = ''; for (const b of lamp) s += b.t; return s; }
+function createState(li){
+  const L = levelDef(li); let id = 0, par = 0, left = 0;
+  const lamps = L.lamps.map(str => str.split('').map(t => ({ id: id++, t })));
+  for (const str of L.lamps){ const p = solveLamp(str); par += p ? p.length : NaN; left += str.length; }
+  return { li, lamps, par, budget: par + L.slack, heat: par + L.slack, taps: 0, pops: 0, chainTaps: 0, firstPopTap: 0, last: null };
+}
+function cloneState(s){ return Object.assign({}, s, { lamps: s.lamps.map(l => l.slice()), last: null }); }
+function blobsLeft(s){ let n = 0; for (const l of s.lamps) n += l.length; return n; }
+function legalMoves(s){
+  const out = [];
+  s.lamps.forEach((l, li) => { const str = lampStr(l); for (let i = 0; i < str.length; i++) if (lampMove(str, i) !== null) out.push({ lamp: li, idx: i }); });
+  return out;
+}
+// Ход: { lamp, idx }. Возвращает новое состояние; невозможный ход или пустое тепло — то же самое состояние.
+// n.last описывает случившееся для оболочки: кто всплыл, какие волны и серии лопнули (по id капель).
+function applyMove(s, m){
+  const src = s.lamps[m.lamp];
+  if (!src || s.heat <= 0 || lampMove(lampStr(src), m.idx) === null) return s;
+  const n = cloneState(s); let arr = n.lamps[m.lamp];
+  const b = arr.splice(m.idx, 1)[0], heavy = isHeavy(b.t);
+  if (heavy) arr.unshift(b); else arr.push(b);
+  const waves = []; let w, pops = 0;
+  while ((w = lampWave(lampStr(arr)))){
+    const cur = arr;
+    waves.push({ runs: w.runs.map(r => ({ color: r.color, ids: cur.slice(r.from, r.to + 1).map(x => x.id) })), frozen: w.frozen.map(k => cur[k].id) });
+    pops += w.runs.length;
+    arr = cur.filter((_, k) => !w.kill[k]);
+  }
+  n.lamps[m.lamp] = arr;
+  n.taps++; n.heat--; n.pops += pops;
+  if (pops >= 2) n.chainTaps++;
+  if (pops && !n.firstPopTap) n.firstPopTap = n.taps;
+  n.last = { lamp: m.lamp, id: b.id, from: m.idx, heavy, waves, pops };
+  return n;
+}
+function isWin(s){ return s.lamps.every(l => l.length === 0); }
+function isDead(s){ return s.lamps.some(l => solveLamp(lampStr(l)) === null); }      // хотя бы одну лампу уже не очистить
+function isLose(s){ return !isWin(s) && (s.heat <= 0 || isDead(s)); }
+// Решение всего уровня: лампы независимы, решаем по очереди. null — решения нет (или поиск упёрся в предел).
+function solve(s){
+  const out = [];
+  for (let li = 0; li < s.lamps.length; li++){
+    const p = solveLamp(lampStr(s.lamps[li]));
+    if (!p) return null;
+    for (const idx of p) out.push({ lamp: li, idx });
+  }
+  return out;
+}
+function minTaps(s){ const p = solve(s); return p ? p.length : Infinity; }
+function hint(s){ const p = solve(s); return p && p.length ? p[0] : null; }           // следующий ход кратчайшего решения
+
+// --- боты для симулятора (PROTO-BASE §6) ---
+function randomRun(li, seed){          // случайные тапы
+  const rnd = mulberry32(seed); let s = createState(li);
+  while (!isWin(s) && !isLose(s)){ const m = legalMoves(s); s = applyMove(s, m[Math.floor(rnd() * m.length)]); }
+  return { win: isWin(s), taps: s.taps, par: s.par, dead: !isWin(s) && s.heat > 0, chainTaps: s.chainTaps };
+}
+function greedyRun(li, seed){          // новичок: лопает сразу, где лопается больше всего, иначе тапает наугад
+  const rnd = mulberry32(seed || 1); let s = createState(li);
+  while (!isWin(s) && !isLose(s)){
+    const left = blobsLeft(s); let best = [], bestN = -1;
+    for (const m of legalMoves(s)){
+      const popped = left - blobsLeft(applyMove(s, m));
+      if (popped > bestN){ bestN = popped; best = [m]; } else if (popped === bestN) best.push(m);
+    }
+    s = applyMove(s, best[Math.floor(rnd() * best.length)]);
+  }
+  return { win: isWin(s), taps: s.taps, par: s.par, dead: !isWin(s) && s.heat > 0, chainTaps: s.chainTaps };
+}
+function plannerRun(li, seed){         // внимательный игрок: лопает сразу; иначе готовит «бульк» следующим тапом; в тупик сам не идёт
+  const rnd = mulberry32(seed || 1); let s = createState(li);
+  while (!isWin(s) && !isLose(s)){
+    const left = blobsLeft(s); let best = [], bestN = -Infinity;
+    for (const m of legalMoves(s)){
+      const n = applyMove(s, m), popped = left - blobsLeft(n);
+      let score = popped * 10;
+      if (!popped){ const l2 = blobsLeft(n); for (const m2 of legalMoves(n)){ const p2 = l2 - blobsLeft(applyMove(n, m2)); if (p2 > score) score = p2; } }
+      if (!isWin(n) && isDead(n)) score = -1;
+      if (score > bestN){ bestN = score; best = [m]; } else if (score === bestN) best.push(m);
+    }
+    s = applyMove(s, best[Math.floor(rnd() * best.length)]);
+  }
+  return { win: isWin(s), taps: s.taps, par: s.par, dead: !isWin(s) && s.heat > 0, chainTaps: s.chainTaps };
+}
+/* КОНЕЦ ЯДРА */
+
+// ---------------------------------------------------------------------------
+// Оболочка: экраны, ввод, рендер, звук, сейв, дебаг-хук. Время абсолютное (§4):
+// всё сравнивается с часами now() = performance.now() + SKEW (SKEW двигает только drive()).
+// ---------------------------------------------------------------------------
+const NAME = 'lava-lampa', VERSION = 'v0.4';
+const T0 = performance.now();
+let SKEW = 0, FROZEN = null;          // FROZEN — часы остановлены (LAVA_LAMPA.freeze): время идёт только через drive(), кадры снимаются точно
+let HOLD = null, HELD = 0;             // стоп-кадр: часы замирают на несколько десятков мс в момент «бульк»
+function now(){
+  if (FROZEN !== null) return FROZEN + SKEW;
+  let r = performance.now();
+  if (HOLD){ if (r < HOLD.until) r = HOLD.from; else { HELD += HOLD.until - HOLD.from; HOLD = null; } }
+  return r - HELD + SKEW;
+}
+function hitStop(ms){ if (FROZEN !== null || HOLD || V.flushing || ms <= 0) return; const r = performance.now(); HOLD = { from: r, until: r + ms }; }
+function log(kind, name, info){            // журнал [game] — одна строка на событие (§11)
+  console.log('[game] ' + JSON.stringify({ t: +((now() - T0) / 1000).toFixed(3), kind, name, info: info === undefined ? '' : String(info) }));
+}
+
+const SAVE_KEY = NAME + '.v1';
+function loadSave(){ try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; } catch (e) { return {}; } }
+function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(G.save)); } catch (e) {} }
+
+const G = {
+  s: null,                       // состояние ядра
+  screen: 'menu',                // menu | game | help | lose  (победа — без карточки: праздник в сцене и следующий уровень)
+  save: Object.assign({ level: 0, muted: false, unlockAll: false }, loadSave()),   // unlockAll — чит «открыть все уровни» (PROTO-BASE §6)
+  timeScale: 1,
+  paused: false,
+  lastInputAt: 0,                // когда игрок последний раз что-то сделал (для подсказки по бездействию)
+  errors: [],                    // исключения кадра: цикл под try/catch, игра не встаёт намертво
+  stats: { firstPopMs: 0, startAt: 0 },
+};
+// Вид: капли с позами, очередь событий анимации, эффекты. Логика уже посчитана ядром — вид только доигрывает.
+const V = {
+  blobs: new Map(),              // id → { id, t, cls, heavy, frozen, lamp, slot, seed, mo, px, py, prx, pry, boost }
+  events: [],                    // [{ at, fn }] — отсортированы по at
+  fx: [],                        // кольца, пузырьки, вспышки, подписи
+  phase: 'idle',                 // idle | win | lose
+  phaseAt: 0,
+  busyUntil: 0,                  // когда доиграет анимация текущего хода
+  idleSince: 0,                  // с какого момента сцена спокойна
+  left: 0,                       // сколько капель видно (чип цели обновляется на «бульк», а не на тапе)
+  heatFlashAt: 0,                // когда погас сегмент шкалы тепла
+  rnd: mulberry32(1),            // случайность эффектов: сид от номера уровня
+  flushing: false,
+  introAt: 0,
+  winAt: 0,                      // когда начался праздник победы
+  dim: 0,                        // 0..1 — лампа гаснет (воск оседает)
+  shake: null,                   // { t0, amp } — тряска сцены
+  nextBlip: 0,                   // когда лампа булькнет сама
+  hintId: -1,                    // капля, на которую сейчас показывает рука
+};
+
+// --- звук: WebAudio-синтез без файлов, ленивый старт по первому жесту (§8) ---
+// Всё идёт в общий выход: компрессор плюс «стеклянное» эхо (свёртка с затухающим шумом — тоже синтез, не файл).
+const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];      // пентатоника: звенья цепочки звучат вверх по ладу
+const Audio = {
+  ac: null, noise: null, out: null,
+  init(){
+    if (this.ac){ if (this.ac.state === 'suspended') this.ac.resume(); return; }
+    try {
+      const ac = this.ac = new (window.AudioContext || window.webkitAudioContext)(), sr = ac.sampleRate, r = mulberry32(99);
+      const len = Math.floor(sr * 0.5), buf = ac.createBuffer(1, len, sr), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = r() * 2 - 1;
+      this.noise = buf;
+      const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.ratio.value = 4; comp.connect(ac.destination);
+      this.out = ac.createGain(); this.out.gain.value = 0.9; this.out.connect(comp);
+      const il = Math.floor(sr * 1.2), ir = ac.createBuffer(2, il, sr);
+      for (let ch = 0; ch < 2; ch++){ const q = ir.getChannelData(ch); for (let i = 0; i < il; i++) q[i] = (r() * 2 - 1) * Math.pow(1 - i / il, 2.8); }
+      const conv = ac.createConvolver(), wet = ac.createGain(); conv.buffer = ir; wet.gain.value = 0.24;
+      this.out.connect(conv); conv.connect(wet); wet.connect(comp);
+    } catch (e) { this.ac = null; }
+  },
+  ok(){ return this.ac && this.out && !G.save.muted && !V.flushing; },
+  // тон со скольжением частоты f0 → f1 за ms, начало через delay секунд
+  glide(f0, f1, ms, type, vol, delay){
+    if (!this.ok()) return;
+    const o = this.ac.createOscillator(), g = this.ac.createGain(), t = this.ac.currentTime + (delay || 0), d = ms / 1000;
+    o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + d);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.2, t + Math.min(0.02, d * 0.3)); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(this.out); o.start(t); o.stop(t + d + 0.03);
+  },
+  // шум через фильтр: всплеск; f1 — куда уезжает частота фильтра
+  hiss(freq, ms, vol, delay, type, f1){
+    if (!this.ok() || !this.noise) return;
+    const s = this.ac.createBufferSource(), f = this.ac.createBiquadFilter(), g = this.ac.createGain(), t = this.ac.currentTime + (delay || 0), d = ms / 1000;
+    s.buffer = this.noise; s.loop = true; f.type = type || 'bandpass'; f.frequency.setValueAtTime(freq, t); if (f1) f.frequency.exponentialRampToValueAtTime(f1, t + d); f.Q.value = 1.2;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol || 0.1, t + Math.min(0.03, d * 0.3)); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    s.connect(f).connect(g).connect(this.out); s.start(t); s.stop(t + d + 0.03);
+  },
+  press(){ this.glide(660, 540, 34, 'sine', 0.07); },
+  rise(ms){ const d = Math.max(180, ms); this.glide(180, 520, d, 'sine', 0.14); this.glide(360, 1040, d, 'sine', 0.03); this.hiss(300, d, 0.035, 0, 'bandpass', 1500); log('sound', 'rise'); },
+  sink(ms){ const d = Math.max(180, ms); this.glide(360, 105, d, 'sine', 0.17); this.hiss(1200, d, 0.03, 0, 'bandpass', 250); log('sound', 'sink'); },
+  land(){ this.glide(185, 82, 85, 'sine', 0.22); this.hiss(420, 70, 0.06, 0, 'lowpass'); log('sound', 'land'); },
+  // «бульк»: капля воды — быстрый взлёт частоты, тело ниже, россыпь пузырьков и звон по ладу; каждое звено цепочки выше
+  bulk(k){
+    const r = Math.pow(2, PENTA[Math.min(k - 1, PENTA.length - 1)] / 12);
+    this.glide(280 * r, 940 * r, 100, 'sine', 0.3); this.glide(140 * r, 400 * r, 170, 'sine', 0.17, 0.02); this.hiss(1500 * r, 95, 0.07);
+    for (let q = 0; q < 3; q++) this.glide(720 * r * (1 + 0.28 * q), 1500 * r * (1 + 0.28 * q), 44, 'sine', 0.06, 0.075 + 0.05 * q);
+    this.glide(523.25 * r, 525 * r, 420, 'triangle', 0.055, 0.02); this.glide(784 * r, 786 * r, 300, 'sine', 0.03, 0.05);
+    log('sound', 'bulk', 'chain=' + k);
+  },
+  crack(){ this.hiss(3200, 160, 0.17, 0, 'highpass'); this.glide(900, 300, 90, 'square', 0.05); this.glide(1900, 1500, 120, 'triangle', 0.05, 0.03); log('sound', 'crack'); },
+  settle(){ this.glide(125, 70, 70, 'sine', 0.1); },
+  nope(){ this.glide(190, 140, 110, 'triangle', 0.14); log('sound', 'nope'); },
+  hop(){ this.glide(300, 360, 70, 'sine', 0.08); },
+  warn(){ this.glide(520, 500, 60, 'square', 0.04, 0.05); this.glide(520, 500, 60, 'square', 0.04, 0.18); log('sound', 'warn'); },
+  amb(x){ const f = 420 + x * 520; this.glide(f, f * 1.9, 46, 'sine', 0.022); },
+  win(){
+    [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => { this.glide(f, f * 1.004, 420, 'sine', 0.16, 0.075 * i); this.glide(f * 2, f * 2.004, 260, 'triangle', 0.03, 0.075 * i); });
+    this.hiss(5200, 900, 0.035, 0.1, 'highpass'); log('sound', 'win');
+  },
+  lose(){ this.glide(300, 62, 700, 'sawtooth', 0.08); this.glide(150, 42, 780, 'sine', 0.2); this.hiss(900, 120, 0.05, 0, 'bandpass'); this.hiss(900, 90, 0.04, 0.16, 'bandpass'); log('sound', 'lose'); },
+  click(){ this.glide(520, 620, 50, 'triangle', 0.1); },
+};
+function buzz(ms){ try { if (navigator.vibrate && !V.flushing) navigator.vibrate(ms); } catch (e) {} }
+
+// --- экраны: DOM-оверлеи, любой открывается кодом или хешем (§6, §11) ---
+const $ = (id) => document.getElementById(id);
+// Уровень открыт, если до него дошёл прогресс или включён чит «открыть все уровни» (PROTO-BASE §6).
+function isOpen(li){ return G.save.unlockAll || li <= G.save.level; }
+function setUnlockAll(on){ G.save.unlockAll = !!on; save(); log('event', 'cheat', 'unlockAll=' + G.save.unlockAll); }
+function goto(screen){
+  if (screen === 'win'){ if (!G.s) startLevel(G.save.level); beginWin(); return; }     // победа — праздник в сцене, отдельной карточки нет
+  if ((screen === 'game' || screen === 'lose') && !G.s){ startLevel(G.save.level); if (screen === 'game') return; }
+  G.screen = screen; log('screen', screen);
+  const ov = $('overlay'), card = $('card');
+  if (screen === 'game'){ ov.classList.remove('show'); G.lastInputAt = now(); return; }
+  ov.classList.add('show');
+  if (screen === 'menu'){
+    let lv = '';
+    for (let i = 0; i < LEVELS.length; i++) lv += `<button data-act="lvl" data-li="${i}" class="${isOpen(i) ? (i === G.save.level ? 'cur' : '') : 'locked'}">${isOpen(i) ? i + 1 : '<span class="lock"></span>'}</button>`;
+    const more = Math.max(G.save.level, LEVELS.length);
+    lv += `<button data-act="lvl" data-li="${more}" class="wide ${isOpen(more) ? (G.save.level >= LEVELS.length ? 'cur' : '') : 'locked'}">${isOpen(more) ? 'Дальше: уровень ' + (more + 1) : '<span class="lock"></span> уровни ' + (LEVELS.length + 1) + '+'}</button>`;
+    card.innerHTML = `<h2>Лава-лампа</h2><p>Уровень ${G.save.level + 1} · ${VERSION}</p>
+      <div class="row"><button class="btn good" data-act="play">Играть</button><button class="btn ghost" data-act="help">Как играть</button></div>
+      <div class="levels">${lv}</div>
+      ${G.save.unlockAll ? '<button class="cheat" data-act="relock">Чит включён · закрыть обратно</button>' : '<button class="cheat" data-act="unlock">Чит: открыть все уровни</button>'}
+      <button class="cheat" data-act="wipe">Сбросить прогресс</button>`;
+  }
+  if (screen === 'help') card.innerHTML = `<h2>Как играть</h2>
+    <ul class="help-list">
+      <li><i style="background:var(--wax-a)"></i><span>Тапни каплю — она всплывёт на самый верх лампы.</span></li>
+      <li><i style="background:var(--wax-b)"></i><span>Три одного цвета вместе — бульк! Остальные оседают и могут лопнуть следом.</span></li>
+      <li><i style="background:var(--wax-c)"></i><span>Очисти лампы, пока есть тепло: один тап — одно деление.</span></li>
+      <li><i style="background:#7a2a55"></i><span>Тёмная капля со стрелкой вниз тяжёлая: она тонет на дно.</span></li>
+      <li><i style="background:var(--wax-frozen)"></i><span>Застывший воск не тапается. Он лопается от соседнего «бульк».</span></li>
+    </ul><button class="btn good" data-act="menu">Понятно</button>`;
+  if (screen === 'lose'){
+    const dead = G.s.heat > 0;
+    const stuck = dead && G.s.lamps.some(l => l.length && l.every(b => isFrozen(b.t)));
+    card.innerHTML = `<h2>${dead ? 'Не собрать' : 'Лампа остыла'}</h2><p>${stuck ? 'Застывший воск остался один — рядом больше нечему лопнуть.' : dead ? 'Оставшийся воск уже не сложить по три.' : 'Тепло кончилось, а воск остался.'}</p>
+      <div class="row"><button class="btn good" data-act="retry">Ещё раз</button><button class="btn ghost" data-act="menu">Меню</button></div>`;
+  }
+}
+$('card').addEventListener('click', (e) => {
+  const el = e.target && e.target.closest ? e.target.closest('[data-act]') : null; if (!el) return;
+  const act = el.dataset.act;
+  Audio.init(); Audio.click(); log('input', 'button', act);
+  if (act === 'play') startLevel(G.save.level);
+  else if (act === 'retry') startLevel(G.s ? G.s.li : G.save.level);
+  else if (act === 'help') goto('help');
+  else if (act === 'lvl'){ const li = +el.dataset.li; if (isOpen(li)) startLevel(li); else toast('Сначала пройди уровень ' + (G.save.level + 1)); }
+  else if (act === 'unlock' || act === 'relock'){ setUnlockAll(act === 'unlock'); goto('menu'); }
+  else if (act === 'wipe'){ G.save = { level: 0, muted: G.save.muted, unlockAll: false }; save(); goto('menu'); }
+  else goto('menu');
+});
+window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (h === 'unlock'){ setUnlockAll(true); goto('menu'); } else if (h && h !== G.screen) goto(h); });
+
+let toastUntil = 0;
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.remove('hide'); toastUntil = now() + CFG.TOAST_MS; }
+
+// --- события анимации: дедлайны в абсолютном времени ---
+function at(time, fn){
+  const ev = { at: time, fn }; let i = V.events.length;
+  while (i > 0 && V.events[i - 1].at > time) i--;
+  V.events.splice(i, 0, ev);
+}
+function animating(t){ return V.events.length > 0 || t < V.busyUntil; }
+// Доиграть всё мгновенно: игрок тапнул, не дожидаясь конца анимации. Логика уже в конечном состоянии — вид догоняет.
+function flushAnim(){
+  if (!V.events.length && now() >= V.busyUntil) return;
+  V.flushing = true;
+  let guard = 0;
+  while (V.events.length && guard++ < 500){ const ev = V.events.shift(); ev.fn(ev.at); }
+  for (const b of V.blobs.values()) b.mo = null;
+  V.flushing = false; V.busyUntil = 0;
+  log('fx.end', 'turn', 'flush');
+}
+
+// --- уровень ---
+function clsOf(t){ return isFrozen(t) ? 5 : COLOR_KEYS.indexOf(tokColor(t)); }
+function startLevel(li){
+  li = Math.max(0, li | 0);
+  G.s = createState(li);
+  V.blobs.clear(); V.events = []; V.fx = []; V.phase = 'idle'; V.busyUntil = 0; V.flushing = false; V.shake = null; V.dim = 0; V.nextBlip = 0;
+  V.rnd = mulberry32(500 + li * 31);
+  const t = now(), ts = G.timeScale;
+  G.s.lamps.forEach((lamp, k) => lamp.forEach((b, j) => {
+    V.blobs.set(b.id, { id: b.id, t: b.t, cls: clsOf(b.t), heavy: isHeavy(b.t), frozen: isFrozen(b.t), lamp: k, slot: j, seed: V.rnd(),
+      mo: { kind: 'grow', t0: t + j * CFG.INTRO_STAGGER_MS / ts, t1: t + (j * CFG.INTRO_STAGGER_MS + CFG.INTRO_MS) / ts }, px: 0, py: 0, prx: 1, pry: 1, boost: 0, arc: 0, hot: 0, kicks: [], press: 0, trailAt: 0 });
+  }));
+  V.left = blobsLeft(G.s); V.introAt = t; V.busyUntil = t + (CFG.INTRO_MS + CFG.INTRO_STAGGER_MS * CFG.CAP) * 0.6 / ts; V.idleSince = V.busyUntil;
+  G.lastInputAt = t; G.stats = { firstPopMs: 0, startAt: t };
+  LAY = null; layout();
+  const L = levelDef(li);
+  log('event', 'level.start', 'level=' + (li + 1) + ' lamps=' + L.lamps.join('|') + ' par=' + G.s.par + ' heat=' + G.s.heat);
+  log('fx.start', 'intro');
+  at(V.busyUntil, () => log('fx.end', 'intro'));
+  goto('game'); hud();
+}
+function setChip(id, val){           // число в чипе подпрыгивает, когда меняется
+  const el = $(id), txt = String(val);
+  if (el.textContent === txt) return;
+  el.textContent = txt;
+  const chip = el.parentNode; chip.classList.remove('bump'); void chip.offsetWidth; chip.classList.add('bump');
+}
+function hud(){
+  $('hud-level').textContent = 'Уровень ' + (G.s ? G.s.li + 1 : G.save.level + 1);
+  setChip('hud-left', G.s ? V.left : 0);
+  setChip('hud-heat', G.s ? G.s.heat : 0);
+  $('chip-heat').classList.toggle('low', !!G.s && G.s.heat <= 2 && !isWin(G.s));
+  $('btn-mute').classList.toggle('muted', !!G.save.muted);
+}
+
+// Подсказка-рука: на учебных уровнях сразу, на остальных — после бездействия. Цель — ход из решения от текущего состояния,
+// поэтому рука не теряется, что бы ни сделал игрок (уроки lesson-touch-fuzz-tutorial).
+function handInfo(t){
+  if (!G.s || G.screen !== 'game' || V.phase !== 'idle' || isWin(G.s) || isLose(G.s)) return null;
+  const L = levelDef(G.s.li), teach = L.hand === 'all' || (L.hand === 'first' && G.s.taps === 0);
+  let h = hint(G.s);
+  if (!h) return null;
+  if (L.handAt && G.s.taps === 0) h = { lamp: L.handAt[0], idx: L.handAt[1] };       // учебный первый ход задан уровнем (он из кратчайших — проверяет аудит)
+  const b = G.s.lamps[h.lamp][h.idx];
+  return { lamp: h.lamp, idx: h.idx, id: b.id, teach, strict: teach,
+    show: !animating(t) && t - V.idleSince >= CFG.HAND_DELAY_MS / G.timeScale && (teach || t - G.lastInputAt >= CFG.HINT_IDLE_MS) };
+}
+
+// Тап по капле: вся логика. Возвращает строку-исход (для журнала и тестов).
+function tapBlob(lampI, idx){
+  if (!G.s || G.screen !== 'game' || V.phase !== 'idle') return 'closed';
+  if (isWin(G.s) || isLose(G.s)) return 'ended';
+  const lamp = G.s.lamps[lampI], b = lamp && lamp[idx];
+  if (!b) return 'miss';
+  const t = now(), vb = V.blobs.get(b.id), h = handInfo(t);
+  G.lastInputAt = t;
+  if (h && h.strict && (h.lamp !== lampI || h.idx !== idx)){         // учебный шаг: принимается только показанная капля, остальное не наказывается
+    if (vb && !vb.mo) vb.mo = { kind: 'nope', t0: t, t1: t + CFG.NOPE_MS / G.timeScale };
+    Audio.nope(); log('input', 'tap.guard', 'lamp=' + lampI + ' idx=' + idx);
+    return 'guard';
+  }
+  if (isFrozen(b.t)){
+    if (vb && !vb.mo) vb.mo = { kind: 'nope', t0: t, t1: t + CFG.NOPE_MS / G.timeScale };
+    Audio.nope(); buzz(8); log('input', 'tap.frozen', 'lamp=' + lampI + ' idx=' + idx);
+    return 'frozen';
+  }
+  if (lampMove(lampStr(lamp), idx) === null){                          // верхней некуда всплывать, тяжёлой на дне некуда тонуть: тепло не тратим
+    if (vb && !vb.mo) vb.mo = { kind: 'hop', t0: t, t1: t + CFG.NOPE_MS / G.timeScale, dir: isHeavy(b.t) ? 1 : -1 };
+    Audio.hop(); log('input', 'tap.noop', 'lamp=' + lampI + ' idx=' + idx);
+    return 'noop';
+  }
+  flushAnim();
+  const before = G.s, n = applyMove(before, { lamp: lampI, idx });
+  if (n === before) return 'noop';
+  G.s = n;
+  log('input', 'tap', 'lamp=' + lampI + ' idx=' + idx + ' tok=' + b.t + ' heat=' + n.heat);
+  playTurn(before, n);
+  hud();
+  return 'ok';
+}
+
+// Раскладывает ход по времени: подъём → волны «бульк» с оседанием → итог.
+function playTurn(before, n){
+  const last = n.last, lampI = last.lamp, t = now(), ts = G.timeScale;
+  const old = before.lamps[lampI].map(b => b.id);
+  let cur = old.slice(); cur.splice(last.from, 1); if (last.heavy) cur.unshift(last.id); else cur.push(last.id);
+  const riser = V.blobs.get(last.id);
+  const dist = last.heavy ? last.from : old.length - 1 - last.from;
+  const riseMs = (CFG.RISE_MS + CFG.RISE_PER_SLOT_MS * dist) / ts;
+  const y0 = riser.py;
+  riser.slot = cur.indexOf(last.id);
+  riser.mo = { kind: 'rise', t0: t, t1: t + riseMs, y0, side: last.id % 2 ? 1 : -1, dir: last.heavy ? -1 : 1 };       // сторона обхода та же, что у пунктира-подсказки
+  riser.press = 0;
+  at(t + riseMs * CFG.RISE_WINDUP, (when) => kick(lampI, y0, 0.1, when, last.id));       // отрыв: столбик вздрагивает
+  if (last.heavy) Audio.sink(riseMs); else Audio.rise(riseMs);
+  buzz(10);
+  log('fx.start', last.heavy ? 'sink' : 'rise', 'id=' + last.id + ' slots=' + dist);
+  at(t + riseMs, (when) => { log('fx.end', last.heavy ? 'sink' : 'rise'); Audio.land(); buzz(8); kick(lampI, riser.py, 0.21, when); });   // посадка: шлепок и волна по столбику
+  V.heatFlashAt = t;
+  if (n.heat <= 2 && n.heat > 0 && !isWin(n)) Audio.warn();
+  // столбик смыкается: у обычной капли соседи сверху оседают, тяжёлая расталкивает нижних вверх
+  const tGap = t + riseMs * (last.heavy ? 0.5 : CFG.GAP_CLOSE_AT);
+  let k = 0;
+  cur.forEach((id, j) => { if (id !== last.id && old.indexOf(id) !== j) moveTo(id, j, tGap + (k++) * CFG.SETTLE_STAGGER_MS / ts); });
+  // волны
+  let tw = t + riseMs + CFG.POP_DELAY_MS / ts, chain = 0, tEnd = t + riseMs;
+  for (const w of last.waves){
+    let tb = tw;
+    w.runs.forEach((run, r) => {
+      const ts0 = tw + r * CFG.RUN_STAGGER_MS / ts, tburst = ts0 + CFG.POP_SQUEEZE_MS / ts, ch = ++chain;
+      at(ts0, () => {
+        let cy = 0, cn = 0;
+        for (const id of run.ids){ const b = V.blobs.get(id); if (b){ cy += slotY(LAY.lamps[lampI], b.slot); cn++; } }
+        cy /= Math.max(1, cn);
+        for (const id of run.ids){ const b = V.blobs.get(id); if (b) b.mo = { kind: 'pop', t0: ts0, t1: tburst, cy }; }
+      });
+      at(tburst, () => burst(lampI, run.ids, run.color, ch));
+      tb = tburst;
+    });
+    if (w.frozen.length){ const ids = w.frozen, tf = tb; at(tf, () => burstFrozen(lampI, ids)); }
+    const dead = new Set(w.frozen); for (const run of w.runs) for (const id of run.ids) dead.add(id);
+    const next = cur.filter(id => !dead.has(id)), tset = tb + CFG.SETTLE_DELAY_MS / ts;
+    let moved = 0;
+    next.forEach((id, j) => { if (cur.indexOf(id) !== j) moveTo(id, j, tset + (moved++) * CFG.SETTLE_STAGGER_MS / ts); });
+    if (moved) at(tset + CFG.SETTLE_MS / ts, () => Audio.settle());
+    cur = next;
+    tEnd = moved ? tset + (CFG.SETTLE_MS + moved * CFG.SETTLE_STAGGER_MS) / ts : tb + CFG.RING_MS * 0.4 / ts;
+    tw = tEnd + CFG.CHAIN_PAUSE_MS / ts;
+  }
+  V.busyUntil = tEnd;
+  at(tEnd, endTurn);
+}
+function moveTo(id, slot, time){
+  at(time, (when) => {
+    const b = V.blobs.get(id); if (!b) return;
+    const y = b.py; b.slot = slot;
+    b.mo = { kind: 'settle', t0: when, t1: when + CFG.SETTLE_MS / G.timeScale, y0: y };
+    if (!V.flushing && b.kicks.length < 6) b.kicks.push({ t0: when + CFG.SETTLE_MS * 0.82 / G.timeScale, a: 0.12 });      // села — качнулась
+  });
+}
+// «Бульк» серии: капли исчезают; брызги воска, кольца, пузырьки, вспышка колбы и блик по стеклу, толчок по столбику,
+// стоп-кадр и тряска (сильнее с каждым звеном цепочки), звук выше с каждым звеном.
+function burst(lampI, ids, color, chain){
+  const t = now(), ts = G.timeScale, cls = COLOR_KEYS.indexOf(color);
+  let cx = 0, cy = 0, n = 0, rr = 20;
+  for (const id of ids){
+    const b = V.blobs.get(id); if (!b) continue;
+    V.blobs.delete(id); V.left--; cx += b.px; cy += b.py; n++; rr = b.prx;
+    if (V.flushing) continue;
+    V.fx.push({ kind: 'ring', lamp: lampI, x: b.px, y: b.py, r0: b.prx * 0.7, r1: b.prx * 2.4, w: 6, cls, t0: t, t1: t + CFG.RING_MS / ts });
+    for (let k = 0; k < CFG.DROPS_PER_BLOB; k++){
+      const a = V.rnd() * Math.PI * 2, sp = 110 + V.rnd() * 230;
+      V.fx.push({ kind: 'drop', lamp: lampI, cls, x: b.px, y: b.py, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60, r: b.prx * (0.2 + V.rnd() * 0.24), t0: t, t1: t + CFG.DROP_MS * (0.6 + V.rnd() * 0.6) / ts });
+    }
+  }
+  if (!n) return;
+  cx /= n; cy /= n;
+  if (!V.flushing){
+    V.fx.push({ kind: 'burst', lamp: lampI, x: cx, y: cy, r: rr * 2.1, cls, t0: t, t1: t + 180 / ts });
+    V.fx.push({ kind: 'ring', lamp: lampI, x: cx, y: cy, r0: rr * 1.2, r1: rr * 5.2, w: 3, cls, t0: t + 40 / ts, t1: t + (CFG.RING_MS + 160) / ts });
+    for (let k = 0; k < CFG.BUBBLES_PER_RUN + Math.min(8, chain * 2); k++){
+      const life = CFG.BUBBLE_MS * (0.6 + V.rnd() * 0.6) / ts;
+      V.fx.push({ kind: 'bub', lamp: lampI, x: cx + (V.rnd() - 0.5) * 44, y: cy + (V.rnd() - 0.5) * 60, vx: (V.rnd() - 0.5) * 34, vy: -(60 + V.rnd() * 110), r: 2 + V.rnd() * 3.8, cls, t0: t, t1: t + life });
+    }
+    V.fx.push({ kind: 'flash', lamp: lampI, cls, t0: t, t1: t + CFG.FLASH_MS / ts });
+    V.fx.push({ kind: 'glint', lamp: lampI, t0: t, t1: t + CFG.GLINT_MS / ts });
+    if (chain >= 2) V.fx.push({ kind: 'label', lamp: lampI, x: cx, y: cy, text: '×' + chain, n: chain, cls, t0: t, t1: t + CFG.LABEL_MS / ts });
+    V.shake = { t0: t, amp: Math.min(CFG.SHAKE_MAX_PX, CFG.SHAKE_PX * (0.6 + 0.5 * chain)) };
+    kick(lampI, cy, 0.2 + Math.min(0.12, 0.04 * chain), t);
+  }
+  if (!G.stats.firstPopMs) G.stats.firstPopMs = Math.round(t - G.stats.startAt);
+  Audio.bulk(chain); buzz(chain >= 2 ? [16, 30, 20] : 16);
+  log('fx.start', 'bulk', 'color=' + color + ' n=' + n + ' chain=' + chain);
+  at(t + CFG.RING_MS / ts, () => log('fx.end', 'bulk'));
+  hud();
+  hitStop(chain >= 2 ? CFG.HITSTOP_CHAIN_MS : CFG.HITSTOP_MS);
+}
+function burstFrozen(lampI, ids){
+  const t = now(), ts = G.timeScale;
+  for (const id of ids){
+    const b = V.blobs.get(id); if (!b) continue;
+    V.blobs.delete(id); V.left--;
+    if (V.flushing) continue;
+    V.fx.push({ kind: 'ring', lamp: lampI, x: b.px, y: b.py, r0: b.prx * 0.7, r1: b.prx * 2.1, w: 5, cls: 5, t0: t, t1: t + CFG.RING_MS / ts });
+    for (let k = 0; k < 9; k++) V.fx.push({ kind: 'shard', lamp: lampI, x: b.px, y: b.py, vx: (V.rnd() - 0.5) * 220, vy: -40 - V.rnd() * 170, r: 3 + V.rnd() * 4.5, rot: V.rnd() * 6, t0: t, t1: t + CFG.BUBBLE_MS * 0.7 / ts });
+  }
+  Audio.crack(); log('fx.start', 'crack', 'n=' + ids.length); at(t + CFG.RING_MS / ts, () => log('fx.end', 'crack'));
+  hud();
+}
+function endTurn(){
+  const t = now();
+  V.idleSince = t; log('fx.end', 'turn');
+  if (V.flushing) return;                      // при доигрывании хода исход проверит следующий ход (он возможен только в живом состоянии)
+  if (isWin(G.s)) beginWin();
+  else if (isLose(G.s)) beginLose();
+}
+function beginWin(){
+  if (V.phase === 'win') return;
+  const t = now(), li = G.s.li;
+  V.phase = 'win'; V.phaseAt = t; V.winAt = t; V.events = []; V.busyUntil = 0;
+  G.screen = 'game'; $('overlay').classList.remove('show');
+  if (li + 1 > G.save.level){ G.save.level = li + 1; save(); }
+  Audio.win(); buzz([20, 40, 20, 40, 30]);
+  log('event', 'level.win', 'level=' + (li + 1) + ' taps=' + G.s.taps + ' par=' + G.s.par + ' chainTaps=' + G.s.chainTaps + ' firstPopMs=' + G.stats.firstPopMs);
+  log('fx.start', 'win');
+  winFx(t);
+  at(t + CFG.WIN_MS / G.timeScale, nextLevel);
+}
+function nextLevel(){                  // лампу выключают, на её месте включается следующая
+  if (V.phase !== 'win') return;
+  log('fx.end', 'win');
+  const t = now(), li = G.s.li;
+  V.phase = 'out'; V.phaseAt = t; V.events = [];
+  log('fx.start', 'lamp.off');
+  at(t + CFG.OUT_MS / G.timeScale, () => { log('fx.end', 'lamp.off'); startLevel(li + 1); });
+}
+function beginLose(){
+  if (V.phase !== 'idle') return;
+  const t = now();
+  V.phase = 'lose'; V.phaseAt = t;
+  Audio.lose(); buzz(60);
+  log('event', 'level.lose', 'level=' + (G.s.li + 1) + ' taps=' + G.s.taps + ' left=' + blobsLeft(G.s) + ' reason=' + (G.s.heat > 0 ? 'dead' : 'heat'));
+  loseFx(t);
+  log('fx.start', 'dim');
+  at(t + CFG.LOSE_MS / G.timeScale, () => { log('fx.end', 'dim'); goto('lose'); });
+}
+
+// --- размер: resize + orientationchange + периодический пересчёт (§2) ---
+const cv = $('cv'), ctx = cv.getContext('2d');
+const VW = 400;                                    // виртуальная ширина; логика и раскладка в виртуальных юнитах (§2)
+let scale = 1, W = VW, H = 640, DPR = 1, LAY = null, lastFitKey = '';
+const QUALITY = { cell: CFG.FIELD_CELL, sum: 0, n: 0 };   // клетка поля плотности: грубеет сама, если кадр не успевает
+function fit(){
+  const r = $('game').getBoundingClientRect(); if (!r.width || !r.height) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), key = r.width + 'x' + r.height + '@' + dpr;
+  if (key === lastFitKey) return;
+  lastFitKey = key; DPR = dpr;
+  scale = r.width / VW; W = VW; H = r.height / scale;
+  cv.width = Math.round(r.width * DPR); cv.height = Math.round(r.height * DPR);
+  LAY = null; layout(); BG = null;
+}
+let fitTimer = 0;
+const refit = () => { clearTimeout(fitTimer); fitTimer = setTimeout(fit, 140); };
+window.addEventListener('resize', refit); window.addEventListener('orientationchange', refit);
+setInterval(fit, 800);
+document.addEventListener('visibilitychange', () => { G.paused = document.hidden; log('event', G.paused ? 'pause' : 'resume'); });
+
+// --- раскладка сцены: лампы на полке, всё масштабируется под высоту кадра ---
+function glassProfile(u){            // полуширина колбы в долях ширины лампы; u: 0 — дно, 1 — горлышко
+  if (u < CFG.GLASS_WIDE_U){ const t = Math.max(0, u) / CFG.GLASS_WIDE_U; return CFG.GLASS_BOT + (0.5 - CFG.GLASS_BOT) * Math.sin(t * Math.PI / 2); }
+  const t = Math.min(1, (u - CFG.GLASS_WIDE_U) / (1 - CFG.GLASS_WIDE_U));
+  return 0.5 + (CFG.GLASS_TOP - 0.5) * (t * t * (3 - 2 * t) * 0.4 + t * 0.6);
+}
+function hwAt(L, y){ return L.W * glassProfile((L.gBot - y) / L.GH); }
+function slotY(L, j){ return L.gBot - L.padB - (j + 0.5) * L.slotH; }
+function layout(){
+  if (LAY || !G.s) return;
+  const n = G.s.lamps.length, gi = Math.min(n, 3) - 1;
+  const need = CFG.TOP_PAD + CFG.CAP_H + CFG.LAMP_H[gi] + CFG.BASE_H - CFG.BASE_CUP + CFG.SHELF_H;
+  const k = Math.min(CFG.LAYOUT_MAX_K, H / need);
+  const shelfTop = H - CFG.SHELF_H * k;
+  const lamps = [];
+  for (let i = 0; i < n; i++){
+    const Wl = CFG.LAMP_W[gi] * k, GH = CFG.LAMP_H[gi] * k, cx = CFG.LAMP_X[gi][i % 3];
+    const gBot = shelfTop - (CFG.BASE_H - CFG.BASE_CUP) * k, gTop = gBot - GH;
+    const padB = CFG.PAD_BOT * k, slotH = (GH - padB - CFG.PAD_TOP * k) / CFG.CAP;
+    const L = { i, cx, W: Wl, GH, gBot, gTop, k, padB, slotH, ry: slotH * 0.5 * CFG.BLOB_RY, rxBase: Wl * CFG.BLOB_RX, baseTop: gBot - CFG.BASE_CUP * k, baseBot: shelfTop + 3 * k };
+    // контур колбы: левая стенка снизу вверх, правая сверху вниз
+    const p = new Path2D(), N = 30;
+    for (let s = 0; s <= N; s++){ const u = s / N, y = gBot - GH * u, x = cx - Wl * glassProfile(u); if (s) p.lineTo(x, y); else p.moveTo(x, y); }
+    for (let s = N; s >= 0; s--){ const u = s / N; p.lineTo(cx + Wl * glassProfile(u), gBot - GH * u); }
+    p.closePath(); L.path = p;
+    // сетка поля плотности
+    const cell = QUALITY.cell, gw = Math.ceil((Wl + 8) / cell), gh = Math.ceil((GH + 8) / cell);
+    const c = document.createElement('canvas'); c.width = gw; c.height = gh;
+    const g = { x0: cx - Wl / 2 - 4, y0: gTop - 4, gw, gh, cell, cv: c, ctx: c.getContext('2d'), F: [], used: [false, false, false, false, false, false], rowMin: 0, rowMax: -1,
+      HV: new Float32Array(gw * gh), HT: new Float32Array(gw * gh), V1: new Float32Array(gw * gh), V2: new Float32Array(gw * gh), C1: new Uint8Array(gw * gh) };
+    const ar = mulberry32(900 + i * 17 + n * 5); L.amb = [];
+    for (let q = 0; q < CFG.AMB_BUBBLES; q++) L.amb.push({ fx: ar(), sp: 0.05 + ar() * 0.09, ph: ar(), r: 1.2 + ar() * 2.6 });
+    for (let q = 0; q < 6; q++) g.F.push(new Float32Array(gw * gh));
+    g.img = g.ctx.createImageData(gw, gh);
+    L.grid = g;
+    lamps.push(L);
+  }
+  LAY = { k, shelfTop, lamps };
+}
+
+// --- палитра из CSS-переменных (§9) ---
+const PAL = {};
+function hexRgb(h){ h = h.replace('#', ''); if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]; return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+function rgba(c, a){ return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + a + ')'; }
+function readPalette(){
+  const cs = getComputedStyle(document.documentElement), g = (n) => cs.getPropertyValue(n).trim();
+  PAL.bg1 = g('--bg1'); PAL.bg2 = g('--bg2'); PAL.rim = g('--glass-rim');
+  PAL.wax = ['--wax-a', '--wax-b', '--wax-c', '--wax-d', '--wax-e', '--wax-frozen'].map(n => hexRgb(g(n)));
+  PAL.liquid = hexRgb(g('--liquid')); PAL.liquidTop = hexRgb(g('--liquid-top')); PAL.bgGlow = hexRgb(g('--bg1'));
+  PAL.metal = [g('--metal-1'), g('--metal-2'), g('--metal-3')];
+  PAL.wood = [g('--wood-1'), g('--wood-2')];
+  PAL.heatOn = hexRgb(g('--heat-on')); PAL.heatOff = g('--heat-off'); PAL.ink = g('--ink');
+  // ореол капли: предрендер в offscreen-canvas, в кадре — только drawImage аддитивом (ART-PLAN, «Палитра и свет»)
+  { const s = document.createElement('canvas'); s.width = s.height = 96; const x = s.getContext('2d'), gr = x.createRadialGradient(48, 48, 2, 48, 48, 48);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,250,235,0.55)'); gr.addColorStop(1, 'rgba(255,240,210,0)'); x.fillStyle = gr; x.fillRect(0, 0, 96, 96); PAL.white = s; }   // белая вспышка «бульк»
+  PAL.glow = PAL.wax.map(c => {
+    const s = document.createElement('canvas'); s.width = s.height = 96;
+    const x = s.getContext('2d'), gr = x.createRadialGradient(48, 48, 4, 48, 48, 48);
+    gr.addColorStop(0, rgba(c, 0.85)); gr.addColorStop(0.45, rgba(c, 0.32)); gr.addColorStop(1, rgba(c, 0));
+    x.fillStyle = gr; x.fillRect(0, 0, 96, 96);
+    return s;
+  });
+}
+
+// --- поза капли в момент t: положение, размеры, вес в поле ---
+function clamp01(x){ return x < 0 ? 0 : x > 1 ? 1 : x; }
+function smooth(x){ x = clamp01(x); return x * x * (3 - 2 * x); }
+function backOut(q){ q = clamp01(q); return 1 + 2.2 * Math.pow(q - 1, 3) + 1.2 * Math.pow(q - 1, 2); }
+// «Желе»: сумма затухающих колебаний от толчков (отрыв, посадка, «бульк»). Время абсолютное — никакого интегрирования.
+function jelly(b, t){
+  const ks = b.kicks; let j = 0;
+  for (let i = ks.length - 1; i >= 0; i--){
+    const dt = (t - ks[i].t0) * G.timeScale / 1000;
+    if (dt < 0) continue;
+    if (dt * 1000 > CFG.JELLY_LIFE_MS){ ks.splice(i, 1); continue; }
+    j += ks[i].a * Math.exp(-dt * CFG.JELLY_DAMP) * Math.sin(dt * CFG.JELLY_FREQ);
+  }
+  return j;
+}
+// Толчок по столбику лампы из точки y: волна доходит до капли с задержкой и слабеет с расстоянием.
+function kick(lampI, y, amp, t, skipId){
+  if (V.flushing || !LAY) return;
+  const L = LAY.lamps[lampI]; if (!L) return;
+  for (const b of V.blobs.values()){
+    if (b.lamp !== lampI || b.id === skipId || b.kicks.length >= 6) continue;
+    const d = Math.abs(b.py - y) / L.slotH;
+    b.kicks.push({ t0: t + d * CFG.JELLY_DELAY_MS / G.timeScale, a: amp / (1 + d * 0.55) });
+  }
+}
+// Положение капли на пути подъёма (или погружения, если тяжёлая) в доле p: «присед», затем дуга вдоль стенки.
+// Той же функцией считается хвост-нить: он идёт по тем же точкам с отставанием.
+function riseAt(m, home, L, p){
+  const wu = CFG.RISE_WINDUP, dip = m.dir * 3.5 * L.k;
+  if (p < wu){ const q = Math.sin(Math.PI * 0.5 * p / wu); return { x: L.cx, y: m.y0 + dip * q, sx: 1 + 0.13 * q, sy: 1 - 0.17 * q, boost: 0, arc: 0 }; }
+  const pp = (p - wu) / (1 - wu), e = pp < 0.5 ? 4 * pp * pp * pp : 1 - Math.pow(-2 * pp + 2, 3) / 2;
+  const y = m.y0 + dip + (home - m.y0 - dip) * e, arc = Math.sin(Math.PI * e);
+  const room = Math.max(0, hwAt(L, y) - L.rxBase * CFG.RISE_SLIM - CFG.WALL_GAP * L.k);
+  return { x: L.cx + m.side * Math.min(room, L.rxBase * CFG.RISE_SIDE) * arc, y, sx: 1 - (1 - CFG.RISE_SLIM) * arc, sy: 1 + CFG.RISE_STRETCH * arc, boost: 0.7 * arc, arc };
+}
+function poseBlob(b, t, L){
+  const home = slotY(L, b.slot);
+  let x = L.cx, y = home, sx = 1, sy = 1, boost = 0, arc = 0, hot = 0;
+  const m = b.mo;
+  if (m){
+    const p = clamp01((t - m.t0) / Math.max(1, m.t1 - m.t0));
+    if (m.kind === 'rise'){                       // «нехотя»: приседает, вытягивается, уходит к стенке, обтекает столбик, шлёпается на место
+      const r = riseAt(m, home, L, p);
+      x = r.x; y = r.y; sx *= r.sx; sy *= r.sy; boost = r.boost; arc = r.arc;
+    } else if (m.kind === 'settle'){
+      const e = 1 - Math.pow(1 - p, 3);
+      y = m.y0 + (home - m.y0) * e;
+      const q = Math.sin(Math.PI * p); sy *= 1 + 0.07 * q; sx *= 1 - 0.05 * q;      // в падении чуть вытянута
+    } else if (m.kind === 'pop'){                   // серия стягивается к своему центру, набухает и раскаляется
+      const e = p * p;
+      y += (m.cy - y) * CFG.POP_GATHER * e;
+      const s = 1 + CFG.POP_SWELL * e + 0.035 * Math.sin(p * 46) * p;
+      sx *= s; sy *= s; boost = 0.5 * p; hot = e;
+    } else if (m.kind === 'grow'){
+      const s = t < m.t0 ? 0.05 : 0.05 + 0.95 * backOut(p); sx *= s; sy *= s;
+    } else if (m.kind === 'nope'){
+      x += Math.sin(p * Math.PI * 4) * 5 * (1 - p) * L.k;
+    } else if (m.kind === 'hop'){
+      const q = Math.sin(Math.PI * p); y += m.dir * q * 7 * L.k; sy *= 1 + 0.08 * q;
+    }
+    if (p >= 1) b.mo = null;
+  }
+  if (b.press){ const q = clamp01((t - b.press) / (CFG.PRESS_MS / G.timeScale)); sx *= 1 + CFG.PRESS_SQUASH * 0.8 * q; sy *= 1 - CFG.PRESS_SQUASH * q; }   // палец лежит на капле
+  const j = jelly(b, t); sy *= 1 - j; sx *= 1 + j * 0.75;
+  if (V.dim > 0){ sy *= 1 - 0.1 * V.dim; sx *= 1 + 0.05 * V.dim; y += 3 * V.dim * L.k; }      // лампа гаснет — воск оседает
+  const w = Math.sin(t * 0.0017 + b.seed * 6.283);
+  sx *= 1 + CFG.WOBBLE * w; sy *= 1 - CFG.WOBBLE * w;
+  x += Math.sin(t * 0.0011 + b.seed * 9.1) * 1.3 * L.k;
+  b.px = x; b.py = y; b.boost = boost; b.arc = arc; b.hot = hot;
+  b.prx = Math.max(2, Math.min(L.rxBase, hwAt(L, y) - CFG.WALL_GAP * L.k) * sx); b.pry = Math.max(2, L.ry * sy);
+}
+function poseAll(t){
+  if (!LAY) return;
+  const risers = [];
+  for (const b of V.blobs.values()){ const L = LAY.lamps[b.lamp]; if (!L) continue; poseBlob(b, t, L); if (b.arc > 0.01) risers.push(b); }
+  // столбик уступает дорогу капле, которая проходит мимо
+  for (const r of risers){
+    const L = LAY.lamps[r.lamp], dir = r.px >= L.cx ? -1 : 1;
+    for (const b of V.blobs.values()){
+      if (b === r || b.lamp !== r.lamp) continue;
+      const d = (b.py - r.py) / (L.slotH * 1.25);
+      b.px += dir * L.rxBase * CFG.PUSH_SIDE * r.arc * Math.exp(-d * d);
+    }
+  }
+}
+
+// --- метаболлы: поле плотности на сетке, отдельно по цветам (сливаются только одноцветные капли) ---
+// Один шар в поле класса cls. heavy — тяжёлая (темнее), hot 0..1 — раскалена перед «бульк».
+function fieldBall(g, cls, x, y, rx, ry, amp, heavy, hot){
+  const gw = g.gw, gh = g.gh, cell = g.cell, Fc = g.F[cls], iR2 = 1 / (CFG.FIELD_R * CFG.FIELD_R);
+  const ex = rx * CFG.FIELD_R, ey = ry * CFG.FIELD_R, irx = 1 / rx, iry = 1 / ry;
+  const x0 = Math.max(0, Math.floor((x - ex - g.x0) / cell)), x1 = Math.min(gw - 1, Math.ceil((x + ex - g.x0) / cell));
+  const y0 = Math.max(0, Math.floor((y - ey - g.y0) / cell)), y1 = Math.min(gh - 1, Math.ceil((y + ey - g.y0) / cell));
+  if (x1 < x0 || y1 < y0) return;
+  g.used[cls] = true;
+  if (y0 < g.rowMin) g.rowMin = y0; if (y1 > g.rowMax) g.rowMax = y1;
+  for (let gy = y0; gy <= y1; gy++){
+    const dy = (g.y0 + (gy + 0.5) * cell - y) * iry, dy2 = dy * dy;
+    if (dy2 * iR2 >= 1) continue;
+    const row = gy * gw;
+    for (let gx = x0; gx <= x1; gx++){
+      const dx = (g.x0 + (gx + 0.5) * cell - x) * irx, q = (dx * dx + dy2) * iR2;
+      if (q >= 1) continue;
+      const f = (1 - q) * (1 - q) * amp, i = row + gx;
+      Fc[i] += f; if (heavy) g.HV[i] += f; if (hot > 0) g.HT[i] += f * hot;
+    }
+  }
+}
+// Капля в поле: тело и два «наплыва», которые медленно ходят внутри, — форма живая, как у лавы, а не ровный овал.
+// Всплывающая капля тянет за собой хвост-нить: шарики на её же пути с отставанием, тоньше к концу; нить рвётся и втягивается.
+function fieldBlob(g, L, b, t){
+  const amp = 1 + b.boost, m = b.mo, lump = b.frozen || (m && m.kind === 'grow') ? 0 : CFG.LUMP;
+  fieldBall(g, b.cls, b.px, b.py, b.prx, b.pry, amp * (1 - lump * 0.6), b.heavy, b.hot);
+  if (lump > 0){
+    const a = t * 0.0012 * (0.6 + b.seed * 0.8) + b.seed * 6.283;
+    for (let k = 0; k < 2; k++){ const an = a + k * 2.5; fieldBall(g, b.cls, b.px + Math.cos(an) * b.prx * 0.34, b.py + Math.sin(an) * b.pry * 0.3, b.prx * 0.74, b.pry * 0.74, amp * lump, b.heavy, b.hot); }
+  }
+  if (m && m.kind === 'rise'){
+    const p = clamp01((t - m.t0) / Math.max(1, m.t1 - m.t0)), wu = CFG.RISE_WINDUP;
+    if (p > wu){
+      const home = slotY(L, b.slot), fade = 1 - smooth(((p - wu) / (1 - wu) - CFG.TAIL_HOLD) / (1 - CFG.TAIL_HOLD));   // нить держится, потом рвётся и втягивается
+      for (let k = 1; k <= CFG.TAIL_N; k++){
+        const r = riseAt(m, home, L, Math.max(wu, p - k * CFG.TAIL_GAP)), rr = b.prx * (0.84 - 0.07 * k) * (0.35 + 0.65 * fade) * (k > 3 ? fade : 1);
+        if (rr > 1.4) fieldBall(g, b.cls, r.x, r.y, rr, rr * 1.25, 1, b.heavy, 0);
+      }
+    }
+  } else if (m && m.kind === 'settle'){          // оседающая капля тянет за собой короткую нить сверху
+    const p = clamp01((t - m.t0) / Math.max(1, m.t1 - m.t0)), home = slotY(L, b.slot);
+    for (let k = 1; k <= 3; k++){
+      const pk = Math.max(0, p - k * 0.16), y = m.y0 + (home - m.y0) * (1 - Math.pow(1 - pk, 3)), rr = b.prx * (0.72 - 0.17 * k) * (1 - p);
+      if (rr > 1.4) fieldBall(g, b.cls, b.px, y, rr, rr * 1.2, 1, b.heavy, 0);
+    }
+  }
+}
+// Свет на воске: ключевой сверху-слева, блик по Блинну, тёплая подсветка снизу от лампочки в подставке.
+const LIT = { lx: -0.462, ly: -0.693, lz: 0.554, hx: -0.262, hy: -0.393, hz: 0.881 };
+// Рисует воск лампы L в её offscreen-canvas: капли, брызги, свет по нормали из уклона поля. dim 0..1 — «лампа гаснет».
+function renderField(L, dim, t){
+  const g = L.grid, gw = g.gw, gh = g.gh, F = g.F, HV = g.HV, HT = g.HT, V1 = g.V1, V2 = g.V2, C1 = g.C1, d = g.img.data;
+  for (let q = 0; q < 6; q++){ F[q].fill(0); g.used[q] = false; }
+  HV.fill(0); HT.fill(0); V1.fill(0);
+  g.rowMin = gh; g.rowMax = -1;
+  for (const b of V.blobs.values()) if (b.lamp === L.i) fieldBlob(g, L, b, t);
+  for (const f of V.fx){                         // брызги «бульк» — тоже воск: маленькие шарики с торможением в жидкости
+    if (f.kind !== 'drop' || f.lamp !== L.i || t < f.t0) continue;
+    const p = clamp01((t - f.t0) / (f.t1 - f.t0)), dt = (t - f.t0) / 1000 * G.timeScale, s = (1 - Math.exp(-4 * dt)) / 4;
+    const r = f.r * Math.pow(1 - p, 0.7);
+    if (r <= 1.2) continue;
+    fieldBall(g, f.cls, f.x + f.vx * s, f.y + f.vy * s - 26 * dt, r, r, 1, false, 0);
+    for (let k = 1; k <= 3; k++){                // тягучий след брызги: она ещё связана с местом, откуда вылетела
+      const sk = s * (1 - 0.24 * k), rk = r * (0.82 - 0.2 * k) * (1 - p);
+      if (rk > 1.1) fieldBall(g, f.cls, f.x + f.vx * sk, f.y + f.vy * sk - 26 * dt * (1 - 0.24 * k), rk, rk, 1, false, 0);
+    }
+  }
+  d.fill(0);
+  if (g.rowMax < 0){ g.ctx.putImageData(g.img, 0, 0); return; }
+  const cls = []; for (let q = 0; q < 6; q++) if (g.used[q]) cls.push(q);
+  const T = CFG.FIELD_T, E = CFG.FIELD_EDGE, wax = PAL.wax, nc = cls.length, r0 = g.rowMin, r1 = g.rowMax;
+  for (let gy = r0; gy <= r1; gy++){             // проход 1: какой цвет главный в клетке
+    for (let gx = 0; gx < gw; gx++){
+      const i = gy * gw + gx;
+      let v1 = 0, c1 = 0, v2 = 0;
+      for (let k = 0; k < nc; k++){ const v = F[cls[k]][i]; if (v > v1){ v2 = v1; v1 = v; c1 = cls[k]; } else if (v > v2) v2 = v; }
+      V1[i] = v1; V2[i] = v2; C1[i] = c1;
+    }
+  }
+  const S = CFG.LIGHT_SLOPE / g.cell, SP = CFG.SPEC_POW, SA = CFG.SPEC_A;
+  for (let gy = r0; gy <= r1; gy++){             // проход 2: цвет и свет
+    for (let gx = 0; gx < gw; gx++){
+      const i = gy * gw + gx, v1 = V1[i];
+      if (v1 <= T - E) continue;
+      const c1 = C1[i], v2 = V2[i], base = wax[c1], frozen = c1 === 5;
+      const a = smooth((v1 - (T - E)) / (2 * E));
+      const tt = clamp01((v1 - T) / (1.05 - T));
+      const k1 = (1 - smooth(tt / 0.2)) * (frozen ? 0.12 : 0.36);     // светящаяся кромка: воск просвечивает по краю
+      const k2 = smooth((tt - 0.5) / 0.5) * (frozen ? 0.2 : 0.14);    // лёгкое светлое ядро
+      let r = base[0] + (255 - base[0]) * (k1 + k2), gg = base[1] + (255 - base[1]) * (k1 + k2), bb = base[2] + (250 - base[2]) * (k1 + k2);
+      // нормаль из уклона поля: воск читается объёмным
+      let nx = -((gx < gw - 1 ? V1[i + 1] : v1) - (gx > 0 ? V1[i - 1] : v1)) * S, ny = -((gy < gh - 1 ? V1[i + gw] : v1) - (gy > 0 ? V1[i - gw] : v1)) * S;
+      if (nx > 2.5) nx = 2.5; else if (nx < -2.5) nx = -2.5; if (ny > 2.5) ny = 2.5; else if (ny < -2.5) ny = -2.5;
+      const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1); nx *= inv; ny *= inv;
+      const diff = nx * LIT.lx + ny * LIT.ly + inv * LIT.lz;
+      let m = 0.93 + 0.13 * (diff > 0 ? diff : diff * 0.6);
+      if (ny < 0) m *= 1 + 0.2 * ny;                                 // верх капли глубже по цвету: свет идёт снизу
+      const sd = nx * LIT.hx + ny * LIT.hy + inv * LIT.hz;
+      let spec = sd > 0 ? Math.pow(sd, SP) * SA * (frozen ? 0.5 : 1) : 0;
+      const bounce = ny > 0 ? ny * (frozen ? 0.08 : 0.34) : 0;                // низ капли нагрет лампочкой: светлее и теплее
+      // тёмная линия на стыке разных цветов
+      if (v2 > T * 0.7){ const df = v1 - v2; if (df < 0.24) m *= 1 - 0.42 * (1 - df / 0.24); }
+      // тяжёлая капля — глубже и темнее
+      if (HV[i] > 0 && !frozen){ const hv = Math.min(1, HV[i] / v1); m *= 1 - 0.46 * hv * (1 - 0.5 * k2); spec *= 0.8; }
+      r = r * m + 255 * spec + 255 * bounce * 0.5; gg = gg * m + 255 * spec + 225 * bounce * 0.5; bb = bb * m + 250 * spec + 150 * bounce * 0.5;
+      if (HT[i] > 0){ const h = Math.min(1, HT[i] / v1) * 0.62; r += (255 - r) * h; gg += (255 - gg) * h; bb += (240 - bb) * h; }   // раскалена перед «бульк»
+      if (dim > 0){ const lum = (r * 0.3 + gg * 0.5 + bb * 0.2) * 0.42 + 14; r += (lum - r) * dim; gg += (lum - gg) * dim; bb += (lum * 1.08 - bb) * dim; }
+      const o = i * 4;
+      d[o] = r; d[o + 1] = gg; d[o + 2] = bb; d[o + 3] = a * 255;
+    }
+  }
+  g.ctx.putImageData(g.img, 0, 0);
+}
+
+// --- рисование: именованные функции, что рисует и от чего зависит (§11) ---
+let BG = null, BGKEY = '', SHX = 0, SHY = 0;
+function sceneTransform(c){ const k = DPR * scale; c.setTransform(k, 0, 0, k, SHX * k, SHY * k); }
+// Фон: чистая темнота с большим фиолетовым пятном света за лампами и гладкая тёмная столешница. Статика кешируется в offscreen-canvas.
+function drawRoom(c){
+  const shelfY = LAY ? LAY.shelfTop : H - CFG.SHELF_H, key = cv.width + 'x' + cv.height + ':' + shelfY.toFixed(1);
+  if (!BG || BGKEY !== key){
+    BG = document.createElement('canvas'); BG.width = cv.width; BG.height = cv.height; BGKEY = key;
+    const x = BG.getContext('2d'), k = LAY ? LAY.k : 1; x.setTransform(DPR * scale, 0, 0, DPR * scale, 0, 0);
+    x.fillStyle = PAL.bg2; x.fillRect(0, 0, W, H);
+    const gl = x.createRadialGradient(W / 2, shelfY * 0.55, 10, W / 2, shelfY * 0.55, H * 0.66);
+    gl.addColorStop(0, rgba(PAL.bgGlow, 0.95)); gl.addColorStop(0.55, rgba(PAL.bgGlow, 0.3)); gl.addColorStop(1, rgba(PAL.bgGlow, 0));
+    x.fillStyle = gl; x.fillRect(0, 0, W, H);
+    const tg = x.createLinearGradient(0, shelfY, 0, H); tg.addColorStop(0, PAL.wood[0]); tg.addColorStop(1, PAL.wood[1]);
+    x.fillStyle = tg; x.fillRect(0, shelfY, W, H - shelfY);
+    x.fillStyle = 'rgba(190,170,255,0.3)'; x.fillRect(0, shelfY, W, 1.6 * k);
+  }
+  const k = DPR * scale;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  if (SHX || SHY){ c.fillStyle = PAL.bg2; c.fillRect(0, 0, cv.width, cv.height); }
+  c.drawImage(BG, SHX * k, SHY * k);
+  sceneTransform(c);
+}
+// Средний цвет воска в лампе — им светится стена. Пустая лампа светит тёплым.
+function lampTint(L){
+  let r = 0, g = 0, b = 0, n = 0;
+  for (const v of V.blobs.values()){ if (v.lamp !== L.i || v.frozen) continue; const c = PAL.wax[v.cls]; r += c[0]; g += c[1]; b += c[2]; n++; }
+  return n ? [r / n, g / n, b / n] : [255, 200, 130];
+}
+// Вспышка лампы от «бульк»: сила 0..1 и цвет.
+function lampFlash(L, t){
+  let f = 0, cls = 2;
+  for (const q of V.fx) if (q.kind === 'flash' && q.lamp === L.i && t >= q.t0 && t < q.t1){ const v = 1 - (t - q.t0) / (q.t1 - q.t0); if (v > f){ f = v; cls = q.cls; } }
+  return { f, cls };
+}
+// Пятно света от лампы на стене (ART-PLAN: радиальный градиент цвета ламп). light 0..1 — яркость, win — праздник, pulse — вспышка «бульк».
+function drawWallGlow(c, L, t, light, win, pulse){
+  const tint = lampTint(L), cy = L.gTop + L.GH * 0.55, R = L.GH * (0.64 + 0.25 * win + 0.1 * pulse);
+  const gr = c.createRadialGradient(L.cx, cy, 10, L.cx, cy, R);
+  const a = (0.27 + 0.34 * win + 0.2 * pulse + 0.025 * Math.sin(t * 0.0013 + L.i)) * light;
+  gr.addColorStop(0, rgba(tint, a)); gr.addColorStop(0.5, rgba(tint, a * 0.4)); gr.addColorStop(1, rgba(tint, 0));
+  c.globalCompositeOperation = 'lighter'; c.fillStyle = gr; c.fillRect(L.cx - R, cy - R, R * 2, R * 2); c.globalCompositeOperation = 'source-over';
+  if (win > 0){                                 // лучи-ореол победы
+    c.save(); c.translate(L.cx, cy); c.rotate(t * 0.0003); c.globalCompositeOperation = 'lighter'; c.fillStyle = rgba([255, 225, 170], 0.07 * win);
+    for (let k = 0; k < 10; k++){ c.rotate(Math.PI / 5); c.beginPath(); c.moveTo(0, 0); c.lineTo(-R * 0.16, -R * 1.25); c.lineTo(R * 0.16, -R * 1.25); c.closePath(); c.fill(); }
+    c.restore(); c.globalCompositeOperation = 'source-over';
+  }
+}
+// Свечение воска наружу: ореол каждой капли на стене за лампой (сама лампа рисуется поверх и цвет не вымывается).
+function drawHalos(c, L, light){
+  if (light <= 0.02) return;
+  c.globalCompositeOperation = 'lighter';
+  for (const b of V.blobs.values()){
+    if (b.lamp !== L.i || b.frozen) continue;
+    const s = b.prx * CFG.HALO_K * (1 + 0.4 * b.hot);
+    c.globalAlpha = Math.min(1, CFG.HALO_A * light * (b.heavy ? 0.5 : 1) * (1 + 1.2 * b.hot));
+    c.drawImage(PAL.glow[b.cls], b.px - s, b.py - s, s * 2, s * 2);
+  }
+  c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+}
+// Свет ламп на столешнице: цветное отражение под каждой подставкой.
+function drawShelfLight(c, light, t){
+  const y = LAY.shelfTop, k = LAY.k;
+  c.globalCompositeOperation = 'lighter';
+  for (const L of LAY.lamps){
+    const tint = lampTint(L), fl = lampFlash(L, t).f, gl = c.createRadialGradient(L.cx, y + 3, 4, L.cx, y + 3, L.W * 1.15);
+    gl.addColorStop(0, rgba(tint, (0.5 + 0.3 * fl) * light)); gl.addColorStop(0.5, rgba(tint, (0.16 + 0.1 * fl) * light)); gl.addColorStop(1, rgba(tint, 0));
+    c.fillStyle = gl; c.fillRect(L.cx - L.W * 1.2, y, L.W * 2.4, 60 * k);
+  }
+  c.globalCompositeOperation = 'source-over';
+}
+// Металл (латунь): трапеция с блеском по ширине, бликами-полосами и кольцами-канавками. hwT/hwB — полуширины сверху и снизу, rings — доли высоты.
+function drawMetal(c, cx, yT, yB, hwT, hwB, rings){
+  const hw = Math.max(hwT, hwB), gr = c.createLinearGradient(cx - hw, 0, cx + hw, 0), h = yB - yT;
+  gr.addColorStop(0, PAL.metal[2]); gr.addColorStop(0.16, PAL.metal[1]); gr.addColorStop(0.31, PAL.metal[0]); gr.addColorStop(0.4, '#fff3cf'); gr.addColorStop(0.5, PAL.metal[1]); gr.addColorStop(0.8, PAL.metal[2]); gr.addColorStop(0.93, '#7a5220'); gr.addColorStop(1, '#2c1a0a');
+  c.fillStyle = gr; c.beginPath(); c.moveTo(cx - hwT, yT); c.lineTo(cx + hwT, yT); c.lineTo(cx + hwB, yB); c.lineTo(cx - hwB, yB); c.closePath(); c.fill();
+  const sh = c.createLinearGradient(0, yT, 0, yB); sh.addColorStop(0, 'rgba(255,255,255,0.16)'); sh.addColorStop(0.2, 'rgba(255,255,255,0)'); sh.addColorStop(0.7, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,0.34)');
+  c.fillStyle = sh; c.fill();
+  for (const u of rings || []){
+    const y = yT + h * u, w = hwT + (hwB - hwT) * u;
+    c.fillStyle = 'rgba(40,20,5,0.4)'; c.fillRect(cx - w, y, w * 2, Math.max(1, h * 0.022));
+    c.fillStyle = 'rgba(255,240,200,0.26)'; c.fillRect(cx - w, y + Math.max(1, h * 0.022), w * 2, Math.max(0.8, h * 0.014));
+  }
+}
+// Подставка лампы со шкалой тепла: сегменты-«нить накала» гаснут сверху вниз, последние два мигают (ART-PLAN).
+function drawBase(c, L, t, heat, budget, light){
+  const k = L.k, hwT = L.W * (CFG.GLASS_BOT + 0.035), hwB = L.W * 0.5;
+  c.fillStyle = 'rgba(0,0,0,0.45)'; c.beginPath(); c.ellipse(L.cx, L.baseBot + 2 * k, hwB * 1.16, 7 * k, 0, 0, Math.PI * 2); c.fill();
+  drawMetal(c, L.cx, L.baseTop, L.baseBot - 7 * k, hwT, hwB * 0.94, [0.1, 0.86]);
+  drawMetal(c, L.cx, L.baseBot - 7 * k, L.baseBot, hwB * 1.03, hwB * 1.06, []);      // опорное кольцо
+  // окошко шкалы
+  const gw = 15 * k, gh = (L.baseBot - L.baseTop) - 30 * k, gx = L.cx - gw / 2, gy = L.baseTop + 13 * k;
+  c.fillStyle = '#140a18'; c.beginPath(); c.roundRect(gx - 3.5 * k, gy - 3.5 * k, gw + 7 * k, gh + 7 * k, 6 * k); c.fill();
+  c.strokeStyle = 'rgba(255,230,170,0.35)'; c.lineWidth = 1 * k; c.stroke();
+  const n = Math.max(1, budget), gap = Math.min(2.2 * k, gh / n * 0.28), sh = (gh - gap * (n - 1)) / n, low = heat <= 2;
+  let lit = 0;
+  for (let s = 0; s < n; s++){
+    const y = gy + gh - (s + 1) * sh - s * gap, on = s < heat;
+    let a = on ? 1 : 0;
+    if (on && low) a = 0.62 + 0.38 * Math.sin(t * 0.011);                        // последние два мигают тёплым
+    if (!on && s === heat){ const q = clamp01((t - V.heatFlashAt) / (300 / G.timeScale)); a = (1 - q) * 0.9; }   // только что погасший сегмент дотлевает
+    c.fillStyle = PAL.heatOff; c.beginPath(); c.roundRect(gx, y, gw, sh, Math.min(2.5 * k, sh / 2)); c.fill();
+    if (a > 0){ lit += a; c.fillStyle = rgba(low && on ? [255, 120, 70] : PAL.heatOn, a * (0.35 + 0.65 * light)); c.beginPath(); c.roundRect(gx, y, gw, sh, Math.min(2.5 * k, sh / 2)); c.fill(); }
+  }
+  if (lit > 0 && light > 0.1){                   // свечение шкалы на латуни
+    c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(0.55, 0.16 + lit * 0.05) * light;
+    c.drawImage(PAL.glow[2], gx - 16 * k, gy + gh * (1 - Math.min(1, heat / n)) - 14 * k, gw + 32 * k, gh * Math.min(1, heat / n) + 28 * k);
+    c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+  }
+}
+// Крышка лампы с навершием.
+function drawCap(c, L){
+  const k = L.k, hwB = L.W * (CFG.GLASS_TOP + 0.03), hwT = hwB * 0.66, yB = L.gTop + 9 * k, yT = L.gTop - (CFG.CAP_H - 9) * k;
+  drawMetal(c, L.cx, yT, yB, hwT, hwB, [0.78]);
+  drawMetal(c, L.cx, yT - 5 * k, yT, hwT * 0.5, hwT * 0.62, []);
+}
+// Жидкость в колбе: светится синим у лампочки в подставке и темнеет к горлышку — на ней любой цвет воска контрастен.
+// win 0..1 — «чистый свет» заливает снизу вверх; dim — лампа гаснет.
+function drawLiquid(c, L, light, dim, win){
+  const x = L.cx - L.W / 2 - 2, w = L.W + 4, on = light * (1 - dim);
+  const mx = (q) => dim > 0 ? [q[0] + (44 - q[0]) * dim, q[1] + (42 - q[1]) * dim, q[2] + (60 - q[2]) * dim] : q;
+  c.fillStyle = '#090518'; c.fillRect(x, L.gTop - 2, w, L.GH + 4);
+  const gr = c.createLinearGradient(0, L.gBot, 0, L.gTop);
+  gr.addColorStop(0, rgba(mx(PAL.liquid), 0.3 + 0.7 * light)); gr.addColorStop(0.5, rgba(mx([(PAL.liquid[0] + PAL.liquidTop[0]) / 2, (PAL.liquid[1] + PAL.liquidTop[1]) / 2, (PAL.liquid[2] + PAL.liquidTop[2]) / 2]), 0.3 + 0.7 * light)); gr.addColorStop(1, rgba(mx(PAL.liquidTop), 0.4 + 0.6 * light));
+  c.fillStyle = gr; c.fillRect(x, L.gTop - 2, w, L.GH + 4);
+  // лампочка у дна: яркое пятно и луч вверх
+  c.globalCompositeOperation = 'lighter';
+  const bl = c.createRadialGradient(L.cx, L.gBot, 2, L.cx, L.gBot, L.W * 0.95);
+  bl.addColorStop(0, rgba([235, 240, 255], 0.75 * on)); bl.addColorStop(0.4, rgba([150, 150, 255], 0.28 * on)); bl.addColorStop(1, rgba([120, 110, 255], 0));
+  c.fillStyle = bl; c.fillRect(L.cx - L.W, L.gBot - L.W, L.W * 2, L.W);
+  const ray = c.createLinearGradient(0, L.gBot, 0, L.gTop); ray.addColorStop(0, rgba([190, 190, 255], 0.16 * on)); ray.addColorStop(1, rgba([190, 190, 255], 0));
+  c.fillStyle = ray; c.beginPath(); c.moveTo(L.cx - L.W * 0.2, L.gBot); c.lineTo(L.cx + L.W * 0.2, L.gBot); c.lineTo(L.cx + L.W * 0.36, L.gTop); c.lineTo(L.cx - L.W * 0.36, L.gTop); c.closePath(); c.fill();
+  c.globalCompositeOperation = 'source-over';
+  if (win > 0){                                 // «чистый свет»: поднимается от подставки
+    const top = L.gBot - (L.GH + 20) * win, wg = c.createLinearGradient(0, top - 30, 0, top + 30);
+    wg.addColorStop(0, rgba([255, 240, 205], 0)); wg.addColorStop(1, rgba([255, 240, 205], 0.9));
+    c.fillStyle = wg; c.fillRect(x, top - 30, w, 60);
+    c.fillStyle = rgba([255, 240, 205], 0.9); c.fillRect(x, top + 30, w, L.gBot - top);
+  }
+}
+// Пузырьки в жидкости: поднимаются всё время, лампа «живёт» и без ввода. Положение — функция времени.
+function drawAmbientBubbles(c, L, t, light){
+  for (const a of L.amb){
+    let u = (t * a.sp / 1000 + a.ph) % 1; if (u < 0) u += 1;
+    const y = L.gBot - 10 - u * (L.GH - 34), x = L.cx + (a.fx - 0.5) * 2 * Math.max(4, hwAt(L, y) - 8 * L.k) + Math.sin(t * 0.0021 + a.ph * 20) * 2.6;
+    const al = Math.sin(Math.PI * u) * 0.34 * light, r = a.r * L.k;
+    c.strokeStyle = 'rgba(255,244,226,' + al.toFixed(3) + ')'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.stroke();
+    c.fillStyle = 'rgba(255,255,255,' + (al * 0.9).toFixed(3) + ')'; c.beginPath(); c.arc(x - r * 0.35, y - r * 0.35, r * 0.3, 0, Math.PI * 2); c.fill();
+  }
+}
+// Стекло поверх воска: объём колбы (светлая кромка слева, тень справа), один длинный мягкий блик, тонкий светлый кант.
+function drawGlassFront(c, L, t){
+  const k = L.k;
+  c.save(); c.clip(L.path);
+  const gr = c.createLinearGradient(L.cx - L.W / 2, 0, L.cx + L.W / 2, 0);
+  gr.addColorStop(0, 'rgba(255,255,255,0.2)'); gr.addColorStop(0.12, 'rgba(255,255,255,0.03)'); gr.addColorStop(0.7, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(6,2,22,0.36)');
+  c.fillStyle = gr; c.fillRect(L.cx - L.W / 2, L.gTop, L.W, L.GH);
+  // блик повторяет левую стенку и сходит на нет к концам
+  const hl = c.createLinearGradient(0, L.gBot, 0, L.gTop); hl.addColorStop(0.1, 'rgba(255,255,255,0)'); hl.addColorStop(0.34, 'rgba(255,255,255,0.42)'); hl.addColorStop(0.66, 'rgba(255,255,255,0.3)'); hl.addColorStop(0.84, 'rgba(255,255,255,0)');
+  c.fillStyle = hl; c.beginPath();
+  for (let s = 2; s <= 26; s++){ const u = s / 30, y = L.gBot - L.GH * u, x = L.cx - L.W * glassProfile(u) + 9 * k; if (s === 2) c.moveTo(x, y); else c.lineTo(x, y); }
+  for (let s = 26; s >= 2; s--){ const u = s / 30, y = L.gBot - L.GH * u, w = (3 + 6 * Math.sin(Math.PI * (s - 2) / 24)) * k; c.lineTo(L.cx - L.W * glassProfile(u) + 9 * k + w, y); }
+  c.closePath(); c.fill();
+  // блик, пробегающий по стеклу после «бульк»
+  for (const f of V.fx){
+    if (f.kind !== 'glint' || f.lamp !== L.i || t < f.t0) continue;
+    const p = clamp01((t - f.t0) / (f.t1 - f.t0)), y = L.gBot + 40 - (L.GH + 120) * p, a = 0.34 * Math.sin(Math.PI * p);
+    c.save(); c.translate(L.cx, y); c.rotate(-0.42);
+    const gg = c.createLinearGradient(0, -26 * k, 0, 26 * k); gg.addColorStop(0, 'rgba(255,255,255,0)'); gg.addColorStop(0.5, 'rgba(255,255,255,' + a.toFixed(3) + ')'); gg.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = gg; c.fillRect(-L.W, -26 * k, L.W * 2, 52 * k); c.restore();
+  }
+  c.restore();
+  c.strokeStyle = 'rgba(200,205,255,0.5)'; c.lineWidth = 2 * k; c.stroke(L.path);
+}
+// Стрелка на капле: куда она пойдёт по тапу. dir −1 — вверх (всплывёт), +1 — вниз (тяжёлая, утонет). s — размер, a — непрозрачность.
+function drawArrow(c, x, y, s, dir, a){
+  if (a <= 0.01) return;
+  c.save(); c.translate(x, y); if (dir > 0) c.rotate(Math.PI);
+  c.beginPath(); c.moveTo(0, -s); c.lineTo(s * 0.88, -s * 0.04); c.lineTo(s * 0.34, -s * 0.04); c.lineTo(s * 0.34, s * 0.8); c.lineTo(-s * 0.34, s * 0.8); c.lineTo(-s * 0.34, -s * 0.04); c.lineTo(-s * 0.88, -s * 0.04); c.closePath();
+  c.lineJoin = 'round'; c.lineWidth = s * 0.36; c.strokeStyle = 'rgba(28,10,40,' + (0.55 * a).toFixed(3) + ')'; c.stroke();
+  c.fillStyle = 'rgba(255,255,255,' + (0.96 * a).toFixed(3) + ')'; c.fill();
+  c.restore();
+}
+// Сколько капель сейчас в лампе (по виду).
+function lampCount(L){ let n = 0; for (const v of V.blobs.values()) if (v.lamp === L.i) n++; return n; }
+// Детали поверх воска: чёткий блик, стрелка вниз у тяжёлой, трещины у застывшего.
+function drawBlobDetails(c, L, dim, t){
+  for (const b of V.blobs.values()){
+    if (b.lamp !== L.i) continue;
+    const sc = Math.min(b.prx / L.rxBase, 1.25);
+    if (b.frozen){
+      c.strokeStyle = 'rgba(70,60,110,0.55)'; c.lineWidth = 1.6 * L.k; c.lineCap = 'round'; c.beginPath();
+      c.moveTo(b.px - b.prx * 0.55, b.py - b.pry * 0.2); c.lineTo(b.px - b.prx * 0.1, b.py + b.pry * 0.05); c.lineTo(b.px + b.prx * 0.1, b.py - b.pry * 0.35);
+      c.moveTo(b.px - b.prx * 0.1, b.py + b.pry * 0.05); c.lineTo(b.px + b.prx * 0.5, b.py + b.pry * 0.35);
+      c.moveTo(b.px + b.prx * 0.15, b.py + b.pry * 0.13); c.lineTo(b.px + b.prx * 0.05, b.py + b.pry * 0.6);
+      c.stroke();
+      continue;
+    }
+    if (b.heavy){                                // стрелка только у исключения: тяжёлая тонет. Обычные всплывают — это базовое правило, его не подписываем
+      const stuck = b.slot === 0, moving = !!b.mo && b.mo.kind !== 'nope' && b.mo.kind !== 'hop';
+      const bob = stuck || moving ? 0 : (0.5 + 0.5 * Math.sin(t * 0.0052 + b.seed * 6.283)) * 2.4 * L.k;
+      drawArrow(c, b.px, b.py + bob + b.pry * 0.04, L.rxBase * 0.44 * sc, 1, (stuck ? 0.3 : 1) * (1 - dim) * (1 - b.hot));
+    }
+    c.fillStyle = 'rgba(255,255,255,' + (0.72 * (1 - dim * 0.7)) + ')';      // чёткий «игрушечный» блик поверх мягкого
+    c.beginPath(); c.ellipse(b.px - b.prx * 0.42, b.py - b.pry * 0.54, b.prx * 0.17, b.pry * 0.085, -0.5, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(b.px - b.prx * 0.62, b.py - b.pry * 0.3, b.prx * 0.045, 0, Math.PI * 2); c.fill();
+  }
+}
+// Пунктир со стрелкой: куда встанет капля b, если её тапнуть. Виден, пока палец лежит на капле, и у руки-подсказки.
+function drawGoPath(c, L, b, t, a){
+  const n = lampCount(L), dir = b.heavy ? 1 : -1, dest = b.heavy ? 0 : n - 1;
+  if (b.slot === dest || b.frozen || b.mo) return;
+  const side = b.id % 2 ? 1 : -1, k = L.k, y0 = b.py + dir * b.pry * 0.5, y1 = slotY(L, dest) - dir * L.ry * 0.15, ym = (y0 + y1) / 2;
+  const x0 = b.px + side * b.prx * 0.75, x1 = L.cx + side * L.rxBase * 0.55;
+  const xc = L.cx + side * Math.min(Math.max(L.rxBase, hwAt(L, ym) - 9 * k), L.rxBase * 2.3);
+  for (let pass = 0; pass < 2; pass++){          // тёмная подложка и белый пунктир, бегущий к цели
+    c.strokeStyle = pass ? 'rgba(255,255,255,' + (0.95 * a).toFixed(3) + ')' : 'rgba(24,8,36,' + (0.6 * a).toFixed(3) + ')';
+    c.lineWidth = (pass ? 3.2 : 6.4) * k; c.lineCap = 'round'; c.setLineDash([7 * k, 8 * k]); c.lineDashOffset = -t * 0.035 * k;
+    c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo(xc, ym, x1, y1); c.stroke();
+  }
+  c.setLineDash([]);
+  const an = Math.atan2(y1 - ym, x1 - xc), hs = 9 * k;      // наконечник по касательной к концу дуги
+  c.save(); c.translate(x1, y1); c.rotate(an);
+  c.beginPath(); c.moveTo(hs * 1.1, 0); c.lineTo(-hs * 0.6, -hs * 0.85); c.lineTo(-hs * 0.6, hs * 0.85); c.closePath();
+  c.lineJoin = 'round'; c.lineWidth = 3.4 * k; c.strokeStyle = 'rgba(24,8,36,' + (0.6 * a).toFixed(3) + ')'; c.stroke();
+  c.fillStyle = 'rgba(255,255,255,' + (0.95 * a).toFixed(3) + ')'; c.fill();
+  c.restore();
+}
+// Эффекты внутри колбы: кольца «бульк», пузырьки, осколки застывшего воска.
+function drawFxInside(c, L, t){
+  for (const f of V.fx){
+    if (f.lamp !== L.i || t < f.t0) continue;
+    const p = clamp01((t - f.t0) / (f.t1 - f.t0)), col = PAL.wax[f.cls] || [255, 255, 255];
+    if (f.kind === 'ring'){
+      const r = f.r0 + (f.r1 - f.r0) * (1 - Math.pow(1 - p, 2.4));
+      c.globalCompositeOperation = 'lighter';
+      c.strokeStyle = rgba([col[0] * 0.5 + 127, col[1] * 0.5 + 127, col[2] * 0.5 + 127], 0.85 * (1 - p)); c.lineWidth = ((f.w || 6) * (1 - p) + 1) * L.k;
+      c.beginPath(); c.arc(f.x, f.y, r, 0, Math.PI * 2); c.stroke();
+      c.globalCompositeOperation = 'source-over';
+    } else if (f.kind === 'bub'){
+      const dt = (t - f.t0) / 1000 * G.timeScale, x = f.x + f.vx * dt + Math.sin(dt * 9 + f.r) * 3, y = f.y + f.vy * dt;
+      if (y < L.gTop + 6) continue;
+      const r = f.r * L.k * (1 - 0.3 * p);
+      c.fillStyle = rgba([col[0] * 0.4 + 150, col[1] * 0.4 + 150, col[2] * 0.4 + 150], 0.55 * (1 - p * p));
+      c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+      c.fillStyle = 'rgba(255,255,255,' + (0.85 * (1 - p)) + ')'; c.beginPath(); c.arc(x - r * 0.3, y - r * 0.3, r * 0.32, 0, Math.PI * 2); c.fill();
+    } else if (f.kind === 'shard'){
+      const dt = (t - f.t0) / 1000 * G.timeScale, x = f.x + f.vx * dt, y = f.y + f.vy * dt + 420 * dt * dt;
+      c.save(); c.translate(x, y); c.rotate(f.rot + dt * 7); c.fillStyle = rgba(PAL.wax[5], 0.95 * (1 - p));
+      c.beginPath(); c.moveTo(-f.r, -f.r * 0.5); c.lineTo(f.r, -f.r * 0.2); c.lineTo(0, f.r * 0.8); c.closePath(); c.fill(); c.restore();
+    } else if (f.kind === 'burst'){             // белая вспышка в точке «бульк»
+      const r = f.r * (0.5 + 1.4 * p);
+      c.globalCompositeOperation = 'lighter'; c.globalAlpha = (1 - p) * (1 - p) * 0.7;
+      c.drawImage(PAL.white, f.x - r, f.y - r, r * 2, r * 2);
+      c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+    }
+  }
+}
+// Эффекты поверх всей сцены: подписи звеньев цепочки («×2»), искры победы, дымок погасшей лампы, круг касания.
+function drawFxTop(c, t){
+  for (const f of V.fx){
+    if (t < f.t0) continue;
+    const p = clamp01((t - f.t0) / (f.t1 - f.t0));
+    if (f.kind === 'label'){
+      const L = LAY.lamps[f.lamp], col = PAL.wax[f.cls] || [255, 255, 255];
+      const s = (0.5 + 0.5 * backOut(p * 3.2)) * (1 + 0.14 * Math.min(4, f.n - 2)) * L.k;
+      c.save(); c.translate(f.x, f.y - 52 * p * L.k); c.scale(s, s); c.rotate(-0.08); c.globalAlpha = 1 - p * p * p;
+      c.font = "900 30px 'Nunito', sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineWidth = 7; c.lineJoin = 'round'; c.strokeStyle = '#1c1330'; c.strokeText(f.text, 0, 0);
+      c.fillStyle = rgba([col[0] * 0.35 + 166, col[1] * 0.35 + 166, col[2] * 0.35 + 166], 1); c.fillText(f.text, 0, 0);
+      c.restore();
+    } else if (f.kind === 'spark'){             // четырёхлучевая искра
+      const s = Math.sin(Math.PI * p) * f.r, a = Math.sin(Math.PI * p);
+      c.save(); c.translate(f.x, f.y - 18 * p); c.rotate(f.rot + p * 1.2); c.globalCompositeOperation = 'lighter'; c.fillStyle = 'rgba(255,240,200,' + (0.9 * a).toFixed(3) + ')';
+      c.beginPath(); for (let i = 0; i < 8; i++){ const an = i * Math.PI / 4, q = i % 2 ? s * 0.22 : s; if (i) c.lineTo(Math.cos(an) * q, Math.sin(an) * q); else c.moveTo(q, 0); } c.closePath(); c.fill();
+      c.restore();
+    } else if (f.kind === 'smoke'){
+      const dt = (t - f.t0) / 1000 * G.timeScale, r = f.r * (1 + 2.2 * p);
+      c.fillStyle = 'rgba(150,140,170,' + (0.26 * (1 - p)).toFixed(3) + ')';
+      c.beginPath(); c.arc(f.x + Math.sin(dt * 3 + f.r) * 7, f.y - 46 * dt, r, 0, Math.PI * 2); c.fill();
+    } else if (f.kind === 'touch'){
+      c.strokeStyle = 'rgba(255,255,255,' + (0.6 * (1 - p)).toFixed(3) + ')'; c.lineWidth = 2.5 * (1 - p) + 0.5;
+      c.beginPath(); c.arc(f.x, f.y, 8 + 26 * (1 - Math.pow(1 - p, 2)), 0, Math.PI * 2); c.stroke();
+    }
+  }
+}
+// Рука-подсказка: белая перчатка с вытянутым пальцем. (x, y) — кончик пальца, press 0..1 — нажатие, k — масштаб.
+function drawHand(c, x, y, press, k){
+  c.save(); c.translate(x, y); c.rotate(-0.42); const s = k * (1 - 0.07 * press); c.scale(s, s);
+  c.lineJoin = 'round'; c.lineCap = 'round'; c.lineWidth = 3.2; c.strokeStyle = '#2a1638'; c.fillStyle = '#ffffff';
+  c.beginPath(); c.roundRect(-9, 0, 18, 40, 9); c.fill(); c.stroke();                  // палец
+  c.beginPath(); c.roundRect(-26, 34, 16, 24, 8); c.fill(); c.stroke();                // большой палец
+  c.beginPath(); c.roundRect(-15, 28, 40, 34, 13); c.fill(); c.stroke();               // кулак
+  c.beginPath(); c.roundRect(-7.4, 20, 14.8, 16, 4); c.fill();                         // стык пальца с кулаком
+  c.lineWidth = 2.2; c.beginPath(); c.moveTo(9, 38); c.lineTo(9, 47); c.moveTo(17, 39); c.lineTo(17, 47); c.stroke();   // костяшки
+  c.restore();
+}
+function drawHandHint(c, t){
+  const h = handInfo(t); if (!h || !h.show) return;
+  const b = V.blobs.get(h.id); if (!b) return;
+  const L = LAY.lamps[b.lamp], cyc = ((t - V.idleSince) % (CFG.HAND_CYCLE_MS / G.timeScale)) / (CFG.HAND_CYCLE_MS / G.timeScale);
+  const press = cyc > 0.42 && cyc < 0.62 ? 1 : 0, away = cyc < 0.42 ? 1 - smooth(cyc / 0.42) : cyc > 0.62 ? smooth((cyc - 0.62) / 0.38) : 0;
+  const x = b.px + b.prx * 0.2, y = b.py + b.pry * 0.1;
+  if (cyc > 0.42){ const q = clamp01((cyc - 0.42) / 0.5); c.strokeStyle = 'rgba(255,255,255,' + (0.85 * (1 - q)) + ')'; c.lineWidth = 3.5 * L.k; c.beginPath(); c.arc(x, y, (b.prx * 0.5 + b.prx * 0.9 * q), 0, Math.PI * 2); c.stroke(); }
+  drawHand(c, x + away * 13 * L.k, y + away * 20 * L.k, press, Math.max(0.8, L.k * 1.02));
+}
+// Фраза победы: крупно, белым с обводкой, без карточки.
+const WIN_WORDS = ['Чисто!', 'Светит!', 'Бульк!', 'Красота!', 'Тепло!', 'Сияет!'];
+function drawWinPhrase(c, t){
+  const p = clamp01((t - V.phaseAt) / (CFG.WIN_MS / G.timeScale)), q = Math.min(1, p * 4.5);
+  const s = (0.5 + 0.5 * backOut(q)) * Math.min(1.1, LAY.k * 1.05) * (1 + 0.025 * Math.sin(t * 0.008));
+  c.save(); c.translate(W / 2, H * 0.3); c.scale(s, s); c.rotate(-0.05 + 0.02 * Math.sin(t * 0.005));
+  c.font = "900 56px 'Nunito', sans-serif"; c.textAlign = 'center'; c.textBaseline = 'middle';
+  const w = WIN_WORDS[G.s.li % WIN_WORDS.length];
+  c.lineJoin = 'round'; c.lineWidth = 16; c.strokeStyle = 'rgba(20,8,34,0.55)'; c.strokeText(w, 0, 5);
+  c.lineWidth = 12; c.strokeStyle = '#2a1638'; c.strokeText(w, 0, 0);
+  const tg = c.createLinearGradient(0, -26, 0, 26); tg.addColorStop(0, '#ffffff'); tg.addColorStop(1, '#ffd98a');
+  c.fillStyle = tg; c.fillText(w, 0, 0);
+  c.restore();
+}
+// Искры и пузыри победы; дымок проигрыша. Случайность — из V.rnd (сид от номера уровня).
+function winFx(t){
+  const ts = G.timeScale;
+  for (let k = 0; k < 34; k++){
+    const L = LAY.lamps[k % LAY.lamps.length], life = (700 + V.rnd() * 900) / ts, d = V.rnd() * 900 / ts;
+    V.fx.push({ kind: 'bub', lamp: L.i, x: L.cx + (V.rnd() - 0.5) * L.W * 0.7, y: L.gBot - 16 - V.rnd() * L.GH * 0.5, vx: (V.rnd() - 0.5) * 16, vy: -(90 + V.rnd() * 150), r: 2.5 + V.rnd() * 5.5, cls: 2, t0: t + d, t1: t + d + life });
+  }
+  for (let k = 0; k < 22; k++){
+    const L = LAY.lamps[k % LAY.lamps.length], d = V.rnd() * 1300 / ts, a = V.rnd() * Math.PI * 2, rad = L.W * (0.55 + V.rnd() * 0.75);
+    V.fx.push({ kind: 'spark', x: L.cx + Math.cos(a) * rad, y: L.gTop + L.GH * (0.15 + V.rnd() * 0.75), r: (6 + V.rnd() * 11) * L.k, rot: V.rnd() * 3, t0: t + d, t1: t + d + (380 + V.rnd() * 360) / ts });
+  }
+  for (const L of LAY.lamps) V.fx.push({ kind: 'glint', lamp: L.i, t0: t + 120 / ts, t1: t + 700 / ts });
+}
+function loseFx(t){
+  const ts = G.timeScale;
+  for (const L of LAY.lamps) for (let k = 0; k < 5; k++){ const d = (300 + k * 150) / ts; V.fx.push({ kind: 'smoke', x: L.cx, y: L.gTop - CFG.CAP_H * L.k, r: (5 + V.rnd() * 5) * L.k, t0: t + d, t1: t + d + 1100 / ts }); }
+}
+// Одна лампа целиком: подставка → жидкость → пузырьки → ореолы → воск → детали → эффекты → стекло → крышка → свечение наружу.
+function drawLamp(c, L, t, light, dim, win){
+  drawBase(c, L, t, G.s.heat, G.s.budget, light * (1 - dim));
+  const fl = lampFlash(L, t);
+  c.save(); c.clip(L.path);
+  drawLiquid(c, L, light, dim, win);
+  drawAmbientBubbles(c, L, t, light * (1 - dim));
+  if (fl.f > 0){ c.globalCompositeOperation = 'lighter'; c.fillStyle = rgba(PAL.wax[fl.cls], 0.34 * fl.f); c.fillRect(L.cx - L.W / 2, L.gTop, L.W, L.GH); c.globalCompositeOperation = 'source-over'; }
+  c.globalCompositeOperation = 'lighter';
+  for (const b of V.blobs.values()){
+    if (b.lamp !== L.i || b.frozen) continue;
+    const s = b.prx * CFG.GLOW_K * (1 + b.boost * 0.5 + b.hot * 0.5);
+    c.globalAlpha = Math.min(1, CFG.GLOW_A * light * (1 - dim) * (b.heavy ? 0.5 : 1) * (1 + b.hot));
+    c.drawImage(PAL.glow[b.cls], b.px - s, b.py - s * (b.pry / b.prx), s * 2, s * 2 * (b.pry / b.prx));
+  }
+  c.globalAlpha = 1; c.globalCompositeOperation = 'source-over';
+  renderField(L, dim, t);
+  const g = L.grid;
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(g.cv, g.x0, g.y0, g.gw * g.cell, g.gh * g.cell);
+  drawBlobDetails(c, L, dim, t);
+  drawFxInside(c, L, t);
+  for (const b of V.blobs.values()){            // куда пойдёт капля: под пальцем и у руки-подсказки
+    if (b.lamp !== L.i || V.phase !== 'idle') continue;
+    if (b.press) drawGoPath(c, L, b, t, clamp01((t - b.press) / (120 / G.timeScale)));
+    else if (b.id === V.hintId) drawGoPath(c, L, b, t, 0.9);
+  }
+  c.restore();
+  drawGlassFront(c, L, t);
+  drawCap(c, L);
+}
+function render(t){
+  SHX = 0; SHY = 0;
+  if (V.shake){                                 // тряска сцены от «бульк»: затухает за SHAKE_MS
+    const dt = (t - V.shake.t0) * G.timeScale;
+    if (dt >= CFG.SHAKE_MS) V.shake = null;
+    else if (dt >= 0){ const a = V.shake.amp * Math.pow(1 - dt / CFG.SHAKE_MS, 2); SHX = Math.sin(dt * 0.085) * a; SHY = Math.cos(dt * 0.12) * a * 0.75; }
+  }
+  drawRoom(ctx);
+  if (!G.s || !LAY) return;
+  const intro = clamp01((t - V.introAt) / (CFG.INTRO_MS / G.timeScale));
+  let light = intro < 1 ? 0.3 + 0.7 * intro * (0.78 + 0.22 * Math.sin(intro * 44)) : 1;         // лампа «включается» с дрожью
+  const losing = V.phase === 'lose' || G.screen === 'lose', ldt = (t - V.phaseAt) * G.timeScale;
+  const dim = losing ? smooth(ldt / (CFG.LOSE_MS * 0.8)) : 0;
+  if (losing && ldt < 420) light *= Math.sin(ldt * 0.075) > 0.1 ? 1 : 0.4;                       // гаснет, мигнув
+  const win = V.phase === 'win' || V.phase === 'out' ? smooth((t - V.winAt) / (520 / G.timeScale)) : 0;
+  if (V.phase === 'out') light *= 1 - smooth((t - V.phaseAt) / (CFG.OUT_MS / G.timeScale));     // между уровнями лампу выключают
+  if (G.s.heat <= 1 && V.phase === 'idle' && !isWin(G.s)) light *= 0.9 + 0.1 * Math.sin(t * 0.021);   // на последнем тепле свет подрагивает
+  V.dim = dim;
+  poseAll(t);
+  { const h = handInfo(t); V.hintId = h && h.show ? h.id : -1; }
+  for (const L of LAY.lamps){ drawWallGlow(ctx, L, t, light * (1 - dim * 0.9), win, lampFlash(L, t).f); drawHalos(ctx, L, light * (1 - dim)); }
+  drawShelfLight(ctx, light * (1 - dim), t);
+  for (const L of LAY.lamps) drawLamp(ctx, L, t, light, dim, win);
+  drawFxTop(ctx, t);
+  if (V.phase === 'win' || V.phase === 'out') drawWinPhrase(ctx, t);
+  drawHandHint(ctx, t);
+  if (V.phase === 'out'){ ctx.fillStyle = 'rgba(8,4,18,' + (0.55 * smooth((t - V.phaseAt) / (CFG.OUT_MS / G.timeScale))).toFixed(3) + ')'; ctx.fillRect(-20, -20, W + 40, H + 40); }
+}
+// Шаг времени: события, уборка эффектов, след пузырьков, тост. Вызывается и кадром, и сторожем, и drive() — время абсолютное, повтор безопасен.
+const AMB_RND = mulberry32(31337);
+function tick(t){
+  let guard = 0;
+  while (V.events.length && V.events[0].at <= t && guard++ < 200){ const ev = V.events.shift(); ev.fn(ev.at); }
+  if (V.fx.length) V.fx = V.fx.filter(f => f.t1 > t);
+  for (const b of V.blobs.values()){            // всплывающая капля оставляет за собой пузырьки
+    if (!b.mo || b.mo.kind !== 'rise' || b.arc < 0.12 || t - (b.trailAt || 0) < CFG.TRAIL_MS / G.timeScale || V.fx.length > 160) continue;
+    b.trailAt = t;
+    V.fx.push({ kind: 'bub', lamp: b.lamp, x: b.px + (AMB_RND() - 0.5) * b.prx, y: b.py + b.mo.dir * b.pry * 0.7, vx: (AMB_RND() - 0.5) * 14, vy: -(20 + AMB_RND() * 34), r: 1.4 + AMB_RND() * 2.2, cls: b.cls, t0: t, t1: t + (360 + AMB_RND() * 320) / G.timeScale });
+  }
+  if (G.screen === 'game' && V.phase === 'idle' && G.s && t > V.nextBlip){ if (V.nextBlip) Audio.amb(AMB_RND()); V.nextBlip = t + 1600 + AMB_RND() * 3400; }   // лампа тихо побулькивает
+  if (toastUntil && t > toastUntil){ $('toast').classList.add('hide'); toastUntil = 0; }
+}
+
+// --- ввод: Pointer Events, порог тап/драг 10 px, pointercancel = pointerup (§3) ---
+let down = null;
+function toVirtual(e){ const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }; }
+// Какая капля под точкой: в лампе, в стекло которой попали (с запасом по ширине), ближайшая к пальцу в «своих радиусах».
+// Берётся видимое положение, поэтому по капле, которая плывёт вдоль стенки, тоже можно попасть.
+function pickBlob(p){
+  if (!LAY) return null;
+  let best = null, bd = Infinity;
+  for (const b of V.blobs.values()){
+    const L = LAY.lamps[b.lamp];
+    if (Math.abs(p.x - L.cx) > L.W / 2 + CFG.HIT_X_PAD) continue;
+    if (b.mo && b.mo.kind === 'pop') continue;
+    const dy = Math.abs(p.y - b.py);
+    if (dy > L.slotH * CFG.HIT_Y) continue;
+    const dx = Math.max(0, Math.abs(p.x - b.px) - b.prx), d = dy / L.slotH + dx / L.rxBase;
+    if (d < bd){ bd = d; best = b; }
+  }
+  return best;
+}
+// Тап в точку сцены. id — капля, выбранная ещё в момент касания (палец лёг на неё, пока она двигалась); без id выбираем по точке сейчас.
+function tapAt(p, id){
+  if (G.screen !== 'game' || !G.s) return 'closed';
+  const t = now();
+  if (V.phase === 'win'){ if (t - V.phaseAt > CFG.WIN_SKIP_MS / G.timeScale){ log('input', 'tap.skip'); V.events = []; nextLevel(); return 'skip'; } return 'wait'; }
+  if (V.phase !== 'idle') return 'closed';
+  let b = null;
+  if (id === undefined){ poseAll(t); b = pickBlob(p); }          // вызов из кода: выбираем по точке сейчас
+  else if (id !== null){ b = V.blobs.get(id); if (!b) return 'gone'; }
+  if (!b){ log('input', 'tap.miss'); return 'miss'; }
+  const idx = G.s.lamps[b.lamp].findIndex(x => x.id === b.id);
+  if (idx < 0) return 'gone';                    // капля уже лопнула по логике и доигрывает анимацию
+  return tapBlob(b.lamp, idx);
+}
+cv.addEventListener('pointerdown', (e) => {
+  Audio.init(); down = toVirtual(e); down.id = e.pointerId;
+  if (G.screen === 'game' && G.s && V.phase === 'idle'){           // каплю фиксируем в момент касания; она сразу сминается под пальцем
+    const t = now(); poseAll(t);
+    const b = pickBlob(down); down.blob = b ? b.id : null;
+    V.fx.push({ kind: 'touch', x: down.x, y: down.y, t0: t, t1: t + 320 / G.timeScale });
+    if (b && !b.frozen){ b.press = t; Audio.press(); }
+  }
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+});
+function onUp(e){
+  if (!down || e.pointerId !== down.id) return;
+  const start = down, p = toVirtual(e); down = null;
+  const pb = start.blob === undefined || start.blob === null ? null : V.blobs.get(start.blob);
+  if (pb && pb.press){ pb.press = 0; if (pb.kicks.length < 6) pb.kicks.push({ t0: now(), a: -0.13 }); }       // отпустили — капля пружинит обратно
+  if (e.type === 'pointercancel'){ log('input', 'tap.cancel'); return; }
+  if (Math.hypot(p.x - start.x, p.y - start.y) > CFG.TAP_SLOP / scale){ log('input', 'tap.swipe'); return; }   // это свайп, а не тап
+  tapAt(start, start.blob);                     // медленный тап и дрожь пальца не отменяют ход: считается капля, на которую палец лёг
+}
+cv.addEventListener('pointerup', onUp); cv.addEventListener('pointercancel', onUp);
+const KEY_ROWS = ['1234567890', 'qwertyuiop', 'asdfghjkl;'];      // дубли на клавиатуру (§3): ряд клавиш = лампа, клавиша = капля снизу вверх
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  for (let r = 0; r < KEY_ROWS.length; r++){ const i = KEY_ROWS[r].indexOf(k); if (i >= 0 && G.s && G.screen === 'game'){ Audio.init(); tapBlob(r, i); return; } }
+  if (k === ' ' || k === 'enter'){ const h = G.s && hint(G.s); if (h && G.screen === 'game'){ Audio.init(); tapBlob(h.lamp, h.idx); e.preventDefault(); } }
+  if (k === 'backspace') startLevel(G.s ? G.s.li : G.save.level);
+  if (k === 'm') goto('menu');
+});
+$('btn-reset').onclick = () => { Audio.init(); Audio.click(); log('input', 'button', 'reset'); startLevel(G.s ? G.s.li : G.save.level); };
+$('btn-menu').onclick = () => { Audio.init(); Audio.click(); log('input', 'button', 'menu'); goto('menu'); };
+$('btn-mute').onclick = () => { G.save.muted = !G.save.muted; save(); hud(); Audio.init(); Audio.click(); log('input', 'button', 'mute=' + G.save.muted); };
+
+// --- цикл: rAF + watchdog setInterval; безопасно, потому что время абсолютное (§4). Кадр под try/catch: одно исключение не останавливает игру. ---
+let lastFrame = 0;
+function step(){
+  try {
+    const t = now(); tick(t);
+    if (G.paused) return;
+    const a = performance.now(); render(t);
+    // слабый телефон: если кадр в среднем дольше порога, поле плотности грубеет на шаг (капли мягче по краю, механика та же)
+    QUALITY.sum += performance.now() - a; QUALITY.n++;
+    if (QUALITY.n >= CFG.SLOW_FRAMES){
+      const avg = QUALITY.sum / QUALITY.n; QUALITY.sum = 0; QUALITY.n = 0;
+      if (avg > CFG.SLOW_FRAME_MS && QUALITY.cell < CFG.FIELD_CELL_MAX && FROZEN === null){ QUALITY.cell++; LAY = null; layout(); log('event', 'quality', 'cell=' + QUALITY.cell + ' avgMs=' + avg.toFixed(1)); }
+    }
+  }
+  catch (e){ if (G.errors.length < 20){ G.errors.push(String(e && e.stack || e)); console.error('[game] frame error', e); } }
+}
+function frame(){ lastFrame = performance.now(); step(); requestAnimationFrame(frame); }
+setInterval(() => { if (performance.now() - lastFrame > 120) step(); }, 40);
+
+// --- дебаг-хук (§6): состояние, любой экран, прогон времени, автоигра ---
+window.LAVA_LAMPA = {
+  G, V, CFG,
+  state(){
+    if (!G.s) return { screen: G.screen };
+    const t = now(), h = handInfo(t);
+    return { screen: G.screen, phase: V.phase, level: G.s.li + 1, lamps: G.s.lamps.map(lampStr), heat: G.s.heat, budget: G.s.budget, par: G.s.par, taps: G.s.taps,
+      pops: G.s.pops, chainTaps: G.s.chainTaps, left: blobsLeft(G.s), shownLeft: V.left, win: isWin(G.s), lose: isLose(G.s), dead: isDead(G.s),
+      animating: animating(t), hand: h ? { lamp: h.lamp, idx: h.idx, show: h.show, strict: h.strict } : null, errors: G.errors.length, firstPopMs: G.stats.firstPopMs };
+  },
+  play(n){ startLevel(Math.max(1, n || 1) - 1); return this.state(); },
+  tap(lamp, idx){ const r = tapBlob(lamp | 0, idx | 0); return Object.assign({ result: r }, this.state()); },
+  tapXY(x, y){ return tapAt({ x, y }); },                         // тап в виртуальных координатах сцены — тем же путём, что палец
+  // Экранные координаты (CSS px) капли и руки — для проверки настоящими касаниями.
+  blobXY(lamp, idx){ poseAll(now()); const b = G.s && G.s.lamps[lamp] && G.s.lamps[lamp][idx], v = b && V.blobs.get(b.id); if (!v) return null; const r = cv.getBoundingClientRect(); return { x: r.left + v.px * scale, y: r.top + v.py * scale }; },
+  probe(){ const t = now(), h = handInfo(t); return { screen: G.screen, phase: V.phase, animating: animating(t), errors: G.errors.length, hand: h && h.show ? Object.assign({ strict: h.strict }, this.blobXY(h.lamp, h.idx)) : null, hint: h ? { lamp: h.lamp, idx: h.idx } : null }; },
+  hint(){ return G.s ? hint(G.s) : null; },
+  solve(){ return G.s ? solve(G.s) : null; },
+  auto(delayMs){ const self = this, d = delayMs || 900; (function go(){ const h = G.s && G.screen === 'game' && V.phase === 'idle' ? hint(G.s) : null; if (!h) return; tapBlob(h.lamp, h.idx); setTimeout(go, d); })(); return this.solve(); },
+  goto(screen){ goto(screen); return G.screen; },
+  drive(sec){                                   // ручной прогон игрового времени: rAF заморожен в скрытой вкладке
+    const n = Math.ceil(sec * 1000 / 16);
+    for (let i = 0; i < n; i++){ SKEW += 16; tick(now()); if (i % 4 === 0) poseAll(now()); }
+    step();
+    return this.state();
+  },
+  speed(x){ G.timeScale = x || 1; return G.timeScale; },
+  freeze(on){ FROZEN = on === false ? null : performance.now(); if (on === false) SKEW = 0; return FROZEN !== null; },   // остановить часы для покадровой съёмки
+  quality(cell){ if (cell){ QUALITY.cell = cell; LAY = null; layout(); } return QUALITY.cell; },   // клетка поля плотности: 2 — чётко, 4 — грубо и быстро
+  bench(n){ n = n || 120; const a = performance.now(); for (let i = 0; i < n; i++) render(now() + i * 16); return +((performance.now() - a) / n).toFixed(2); },   // среднее время кадра JS, мс
+  unlockAll(on){ setUnlockAll(on === undefined ? true : on); if (G.screen === 'menu') goto('menu'); return G.save.unlockAll; },   // чит: открыть все уровни
+  reset(){ try { localStorage.removeItem(SAVE_KEY); } catch (e) {} location.reload(); },
+};
+
+// --- старт ---
+readPalette(); fit(); hud();
+try { if (document.fonts && document.fonts.load){ document.fonts.load("900 40px 'Nunito'"); document.fonts.load("900 40px 'Nunito'", 'Чисто'); } } catch (e) {}
+const startHash = location.hash.slice(1) === 'unlock' ? (setUnlockAll(true), 'menu') : location.hash.slice(1);
+goto(startHash || 'menu');
+requestAnimationFrame(frame);
+log('event', 'boot', 'levels=' + LEVELS.length);
+</script>
+</body>
+</html>
